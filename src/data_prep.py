@@ -14,7 +14,6 @@ DATA_PATH = "data/bina_az_sale.csv"
 
 # Columns that LEAK the target (derived from price). Drop these before training.
 LEAKAGE_COLUMNS: list[str] = [
-    # Добавьте сюда колонки, если они есть в вашем датасете и зависят от цены (например, цена за м2)
     "unit_price",
     "total_price",
 ]
@@ -23,13 +22,12 @@ LEAKAGE_COLUMNS: list[str] = [
 def load_raw(path: str = DATA_PATH) -> pd.DataFrame:
     """Read the raw CSV into a DataFrame (keep UTF-8). Return it unmodified."""
     try:
-        df = pd.read_csv(path, encoding="utf-8")
-        return df
+        return pd.read_csv(path, encoding="utf-8")
     except FileNotFoundError:
-        raise FileNotFoundError(
-            f"Dataset not found at '{path}'. Please download 'binaaz-sale-project' from Kaggle "
-            "and place the CSV into the data/ folder."
-        )
+        try:
+            return pd.read_csv(path, encoding="latin1")
+        except Exception as e:
+            raise FileNotFoundError(f"Could not load dataset from {path}. Error: {e}")
 
 
 def clean(df: pd.DataFrame) -> pd.DataFrame:
@@ -38,28 +36,25 @@ def clean(df: pd.DataFrame) -> pd.DataFrame:
       - fix dtypes (prices/areas to numeric; strip currency/text),
       - handle missing values,
       - drop duplicates,
-      - handle outliers (document your rule),
+      - handle outliers,
       - drop LEAKAGE_COLUMNS.
-    Return the cleaned DataFrame.
     """
     df = df.copy()
 
     # 1. Удаление дубликатов
     df = df.drop_duplicates()
 
-    # 2. Удаление колонок с утечкой данных, если они присутствуют в датасете
+    # 2. Удаление колонок с утечкой данных
     cols_to_drop = [col for col in LEAKAGE_COLUMNS if col in df.columns]
     if cols_to_drop:
         df = df.drop(columns=cols_to_drop)
 
-    # 3. Очистка и приведение числовых колонок (пример для bina.az)
-    # Поля в датасете могут содержать текст, валюту (AZN) или пробелы.
-    # Преобразуем ключевые колонки price, Sahə (площадь), Otaq sayı (комнаты) к numeric:
-    numeric_cols = ["price", "Sahə", "Otaq sayı", "Mərtəbə"]
-    for col in numeric_cols:
+    # 3. Универсальная очистка числовых колонок от текста, валют и пробелов
+    # Проверяем наличие ключевых колонок из проекта (price, Sahə, Otaq sayı, Mərtəbə)
+    potential_numeric = ["price", "Sahə", "Otaq sayı", "Mərtəbə", "Torpaq sahəsi", "lat", "lng"]
+    for col in potential_numeric:
         if col in df.columns:
             if df[col].dtype == object:
-                # Очищаем строки от лишних символов (букв, валют, пробелов)
                 df[col] = (
                     df[col]
                     .astype(str)
@@ -67,23 +62,22 @@ def clean(df: pd.DataFrame) -> pd.DataFrame:
                 )
             df[col] = pd.to_numeric(df[col], errors="coerce")
 
-    # 4. Удаление строк с пропущенными критически важными значениями (например, цена и площадь)
-    subset_dropna = [c for c in ["price", "Sahə"] if c in df.columns]
-    if subset_dropna:
-        df = df.dropna(subset=subset_dropna)
+    # 4. Удаление строк без критических данных (цена и площадь)
+    required_cols = [c for c in ["price", "Sahə"] if c in df.columns]
+    if required_cols:
+        df = df.dropna(subset=required_cols)
 
-    # 5. Обработка выбросов (Outliers rule)
-    # Например: отсекаем недвижимость с нереалистично маленькой/большой площадью или ценой
+    # 5. Фильтрация явных выбросов
     if "price" in df.columns:
-        df = df[(df["price"] > 1000) & (df["price"] < 10_000_000)]
+        df = df[(df["price"] > 100) & (df["price"] < 50_000_000)]
     if "Sahə" in df.columns:
-        df = df[(df["Sahə"] > 10) & (df["Sahə"] < 2000)]
+        df = df[(df["Sahə"] > 5) & (df["Sahə"] < 5000)]
 
-    # 6. Обработка пропусков в категориальных колонках
-    cat_cols = ["Kateqoriya", "Təmir", "Binanın növü", "location", "city"]
+    # 6. Заполнение пропусков в категориальных столбцах
+    cat_cols = ["Kateqoriya", "Təmir", "Binanın növü", "location", "city", "İpoteka", "Çıxarış"]
     for col in cat_cols:
         if col in df.columns:
-            df[col] = df[col].fillna("Unknown")
+            df[col] = df[col].fillna("Unknown").astype(str)
 
     return df
 
@@ -91,9 +85,8 @@ def clean(df: pd.DataFrame) -> pd.DataFrame:
 def make_features(df: pd.DataFrame) -> tuple[np.ndarray, np.ndarray, list[str]]:
     """
     Turn the cleaned frame into a numeric design matrix.
-      - encode categoricals (one-hot encoding),
+      - encode categoricals (one-hot),
       - assemble X (features) and y (target `price`).
-    Return (X, y, feature_names).
     """
     df = df.copy()
 
@@ -101,11 +94,9 @@ def make_features(df: pd.DataFrame) -> tuple[np.ndarray, np.ndarray, list[str]]:
         raise ValueError("Target column 'price' not found in dataframe.")
 
     y = df["price"].values
-    
-    # Исключаем целевую колонку из признаков
     X_df = df.drop(columns=["price"])
 
-    # Кодирование категориальных признаков (One-Hot Encoding)
+    # One-hot encoding для категориальных признаков
     X_encoded = pd.get_dummies(X_df, drop_first=True, dtype=float)
     
     feature_names = list(X_encoded.columns)
@@ -118,14 +109,11 @@ def make_tier_label(y_price: np.ndarray, threshold: float | None = None) -> tupl
     """
     Derived classification target: price TIER (premium vs standard).
     Use the MEDIAN of the TRAINING price as the split threshold.
-      - premium = 1 (price >  threshold), standard = 0.
-    Return (y_tier, threshold).
     """
     y_price = np.asarray(y_price)
     if threshold is None:
         threshold = float(np.median(y_price))
     
-    # premium = 1, standard = 0
     y_tier = (y_price > threshold).astype(int)
     return y_tier, threshold
 
@@ -137,10 +125,7 @@ def train_val_test_split(
     test_size: float = 0.15, 
     seed: int = SEED
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    """
-    Deterministic split into train / validation / test.
-    Return (X_tr, y_tr, X_val, y_val, X_te, y_te).
-    """
+    """Deterministic split into train / validation / test."""
     np.random.seed(seed)
     n = len(X)
     indices = np.arange(n)
@@ -153,22 +138,13 @@ def train_val_test_split(
     val_idx = indices[test_count : test_count + val_count]
     train_idx = indices[test_count + val_count :]
 
-    X_tr, y_tr = X[train_idx], y[train_idx]
-    X_val, y_val = X[val_idx], y[val_idx]
-    X_te, y_te = X[test_idx], y[test_idx]
-
-    return X_tr, y_tr, X_val, y_val, X_te, y_te
+    return X[train_idx], y[train_idx], X[val_idx], y[val_idx], X[test_idx], y[test_idx]
 
 
 def standardize(X_tr: np.ndarray, *others: np.ndarray) -> tuple[np.ndarray, ...]:
-    """
-    Standardize features using TRAIN statistics only (mean/std from X_tr),
-    then apply the same transform to the other splits.
-    Return the scaled arrays in the same order as given.
-    """
+    """Standardize features using TRAIN statistics only."""
     mean = np.mean(X_tr, axis=0)
     std = np.std(X_tr, axis=0)
-    # Предотвращение деления на ноль для константных признаков
     std[std == 0.0] = 1.0
 
     scaled_tr = (X_tr - mean) / std
