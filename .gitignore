@@ -14,6 +14,7 @@ env/
 # --- Generated outputs ---
 report/figures/*.pdf
 report/figures/*.png
+report/tables/
 !report/figures/.gitkeep
 *.log
 *.aux

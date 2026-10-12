@@ -15,7 +15,8 @@ Stages:
   6. diagnostics: confusion matrix, ROC, feature importances, SVM weights,
      margin, support vectors,
   7. error analysis: where do the models fail?
-  8. save every number (results.json, summary.md) and every figure (PNG).
+  8. save every number (results.json, summary.md), every figure (PNG) and the
+     report's tables (LaTeX).
 
 Everything is seeded from data_prep.SEED. Nothing from the test split sets the
 tier threshold, the scaling statistics or any setting. A model that is not
@@ -38,10 +39,12 @@ matplotlib.use("Agg")       # draw to files; no screen needed. Must come before 
 import numpy as np
 import pandas as pd
 
-from . import benchmark, data_prep, error_analysis, evaluate, model_api, report_figures, synthetic
+from . import (benchmark, data_prep, error_analysis, evaluate, model_api, report_figures,
+               report_tables, synthetic)
 
 OUT_DIR = "results"
 FIG_DIR = "report/figures"
+TABLE_DIR = "report/tables"       # LaTeX tables that report/report.tex pulls in
 TASKS = {"regression": "task_a", "classification": "task_b"}
 
 
@@ -180,7 +183,7 @@ def write_summary(results: dict, path: str, label: str = "") -> None:
 def run_pipeline(X, y_price, feature_names, rows: pd.DataFrame | None = None,
                  config: dict | None = None, out_dir: str = OUT_DIR, fig_dir: str = FIG_DIR,
                  model_classes=None, tuning_run=None, label: str = "",
-                 k: int = benchmark.N_FOLDS) -> dict:
+                 k: int = benchmark.N_FOLDS, table_dir: str | None = None) -> dict:
     """
     Stages 1 (split) to 8 on a ready feature table. Returns every number in one dict.
 
@@ -189,6 +192,7 @@ def run_pipeline(X, y_price, feature_names, rows: pd.DataFrame | None = None,
     model_classes: (tree class, SVM class) to use instead of the team's own.
     tuning_run:    the tuning study's function, or None to keep the given settings.
     label:         a prefix for figure titles (e.g. to mark a test run).
+    table_dir:     where the LaTeX tables go (default: a tables/ folder inside out_dir).
     """
     X = np.asarray(X, dtype=float)
     y_price = np.asarray(y_price, dtype=float)
@@ -233,7 +237,10 @@ def run_pipeline(X, y_price, feature_names, rows: pd.DataFrame | None = None,
     # 5-7. Final test evaluation, diagnostics, error analysis -------------------
     results = {
         "data": {"n": len(X), "n_features": X.shape[1], "train": len(train), "val": len(val),
-                 "test": len(test), "threshold": threshold},
+                 "test": len(test), "threshold": threshold,
+                 "premium_share": {"train": float(tier[train].mean()),
+                                   "val": float(tier[val].mean()),
+                                   "test": float(tier[test].mean())}},
         "config": config, "tuned": tuning_run is not None, "cv": cv,
         "test": {"task_a": {}, "task_b": {}}, "skipped": [],
         "diagnostics": {"confusion_matrix": {}, "svm": {}, "top_features": {}},
@@ -351,8 +358,10 @@ def run_pipeline(X, y_price, feature_names, rows: pd.DataFrame | None = None,
         json.dump(results, handle, indent=2, ensure_ascii=False,
                   default=lambda value: value.item() if hasattr(value, "item") else str(value))
     write_summary(results, os.path.join(out_dir, "summary.md"), label)
+    table_dir = table_dir or os.path.join(out_dir, "tables")
+    results["tables"] = report_tables.write_tables(results, table_dir)
     print(f"\n== 8. Saved ==\n{out_dir}/results.json, {out_dir}/summary.md, "
-          f"{len(figures)} figures in {fig_dir}/")
+          f"{len(figures)} figures in {fig_dir}/, {len(results['tables'])} LaTeX tables in {table_dir}/")
     return results
 
 
@@ -364,7 +373,7 @@ def main(argv=None) -> None:
                         help="development only: stand-in models in place of the team's")
     args = parser.parse_args(argv)
 
-    out_dir, fig_dir, label, model_classes = OUT_DIR, FIG_DIR, "", None
+    out_dir, fig_dir, table_dir, label, model_classes = OUT_DIR, FIG_DIR, TABLE_DIR, "", None
     if args.standins:
         from tests import standins                  # development scaffolding, never reported
         print("STAND-IN MODELS: 'Ours' rows below are NOT the team's models. Not project results.")
@@ -387,9 +396,11 @@ def main(argv=None) -> None:
         eda_plots.generate_eda_figures()
     if out_dir != OUT_DIR:
         fig_dir = os.path.join(out_dir, "figures")  # test runs never touch the report's figures
+        table_dir = os.path.join(out_dir, "tables")  # ... or its tables
 
     run_pipeline(X, y_price, feature_names, rows, out_dir=out_dir, fig_dir=fig_dir,
-                 model_classes=model_classes, tuning_run=load_tuning(), label=label)
+                 model_classes=model_classes, tuning_run=load_tuning(), label=label,
+                 table_dir=table_dir)
 
 
 if __name__ == "__main__":

@@ -71,6 +71,9 @@ def test_pipeline_runs_while_team_models_are_templates(listings, tmp_path, capsy
                                               "sklearn: SGDClassifier"}
     assert "Not implemented yet" in printed and "test split, used once" in printed
     assert (tmp_path / "results.json").exists() and (tmp_path / "summary.md").exists()
+    # A model that is not written yet is visible in the report's table, not silently absent.
+    assert "Ours: tree & \\multicolumn{6}{c}{not implemented yet}" in (
+        tmp_path / "tables" / "results_task_b.tex").read_text()
 
 
 # --- The pipeline once our models exist (stand-ins) --------------------------
@@ -98,6 +101,13 @@ def test_every_table_and_figure_is_produced(standin_run):
     for name in expected:
         assert (folder / "figures" / f"{name}.png").stat().st_size > 0, name
     assert all(os.path.exists(path) for path in results["figures"])
+
+    tables = {os.path.basename(path) for path in results["tables"]}
+    assert {"numbers.tex", "data_summary.tex", "settings.tex", "results_task_a.tex",
+            "results_task_b.tex", "errors_task_a.tex", "errors_task_b.tex", "timing.tex",
+            "svm_margin.tex", "agreement.tex", "worst_misses.tex"} == tables
+    assert "\\newcommand{\\NumListings}{600}" in (folder / "tables" / "numbers.tex").read_text()
+    assert "Ours: tree" in (folder / "tables" / "results_task_b.tex").read_text()
 
     saved = json.loads((folder / "results.json").read_text(encoding="utf-8"))
     assert saved["test"]["task_b"]["Ours: tree"]["F1"] == results["test"]["task_b"]["Ours: tree"]["F1"]
