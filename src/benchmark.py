@@ -57,8 +57,10 @@ CONFIG = {
     "log_price": True,              # Task A: model log(price) instead of price
 }
 
-# The real feature table should have far fewer columns than this.
-MAX_FEATURE_COLUMNS = 5000
+# Guard for the real data stage: a sound feature table built from PROBE_ROWS
+# rows has far fewer columns than MAX_FEATURE_COLUMNS.
+PROBE_ROWS = 1000
+MAX_FEATURE_COLUMNS = 2000
 
 
 # --- scikit-learn baselines with matched settings ---------------------------
@@ -384,8 +386,14 @@ def run(X, y_price, feature_names=None, config: dict = CONFIG, k: int = N_FOLDS)
             if report is not None:
                 results["agreement"][f"{our_spec['name']} vs {baseline['name']} ({key})"] = report
 
+        # Time against row count: our models and the baseline each is matched with.
+        # (LinearSVC is left out: its C = 1/(lambda*n) changes with n, so its time
+        # does not show how the solver scales.)
         sizes = [n for n in (1000, 5000, 20000) if n <= len(X)] or [len(X)]
+        matched = {spec["baseline"] for spec in specs if spec["baseline"]}
         for spec in specs:
+            if not spec["baseline"] and spec["name"] not in matched:
+                continue
             timings = timing_by_size(spec, X, y_price, task, sizes, log_price=log_price)
             if timings is not None:
                 results["timing"][f"{spec['name']} ({key})"] = timings
@@ -415,12 +423,13 @@ def load_real_data():
             f"Data stage not ready: {repeats:,} rows are repeat scrapes of a listing already "
             "in the table, so folds would put the same flat in train and test.")
 
-    text_columns = df.drop(columns=["price"]).select_dtypes(exclude="number")
-    one_hot_columns = int(text_columns.nunique().sum())
-    if one_hot_columns > MAX_FEATURE_COLUMNS:
+    # Try a small sample first: a feature table that one-hot encodes ids or free
+    # text shows up here as thousands of columns, before it can exhaust memory.
+    probe_columns = data_prep.make_features(df.head(PROBE_ROWS))[0].shape[1]
+    if probe_columns > MAX_FEATURE_COLUMNS:
         raise SystemExit(
-            f"Data stage not ready: make_features would create about {one_hot_columns:,} "
-            "columns from text and id columns.")
+            f"Data stage not ready: make_features creates {probe_columns:,} columns from only "
+            f"{PROBE_ROWS:,} rows, so text or id columns are being one-hot encoded.")
 
     X, y_price, feature_names = data_prep.make_features(df)
     if np.isnan(np.asarray(X, dtype=float)).any():

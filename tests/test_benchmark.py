@@ -326,11 +326,30 @@ def test_real_data_is_refused_while_the_data_stage_is_not_ready(monkeypatch):
     with pytest.raises(SystemExit, match="repeat scrapes"):
         benchmark.load_real_data()
 
-    def fake_clean_wide(_):
-        n = benchmark.MAX_FEATURE_COLUMNS + 10
+    # A feature table that one-hot encodes an id column: one column per row.
+    def fake_clean_ids(_):
+        n = benchmark.MAX_FEATURE_COLUMNS + 500
         return pd.DataFrame({"price": np.arange(n, dtype=float) + 1,
                              "id_x": [f"id-{i}" for i in range(n)]})
 
-    monkeypatch.setattr(data_prep, "clean", fake_clean_wide)
+    def one_hot_everything(df):
+        X = pd.get_dummies(df.drop(columns=["price"]), dtype=float)
+        return X.values, df["price"].values, list(X.columns)
+
+    monkeypatch.setattr(benchmark, "PROBE_ROWS", benchmark.MAX_FEATURE_COLUMNS + 100)
+    monkeypatch.setattr(data_prep, "clean", fake_clean_ids)
+    monkeypatch.setattr(data_prep, "make_features", one_hot_everything)
     with pytest.raises(SystemExit, match="columns"):
+        benchmark.load_real_data()
+
+    # A feature table with a hole in it.
+    def fake_clean_ok(_):
+        return pd.DataFrame({"price": [100000.0, 120000.0], "area": [50.0, np.nan]})
+
+    def numeric_only(df):
+        return df[["area"]].values, df["price"].values, ["area"]
+
+    monkeypatch.setattr(data_prep, "clean", fake_clean_ok)
+    monkeypatch.setattr(data_prep, "make_features", numeric_only)
+    with pytest.raises(SystemExit, match="missing values"):
         benchmark.load_real_data()
