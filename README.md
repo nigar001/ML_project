@@ -69,9 +69,16 @@ split, and runs the diagnostics and the error analysis. It writes:
 
 - `results/results.json` — every number,
 - `results/summary.md` — the results tables,
-- `report/figures/*.png` — every figure.
+- `report/figures/*.png` — every figure,
+- `report/tables/*.tex` — the report's tables.
 
 A model that is not implemented yet is listed as "not implemented yet" and skipped.
+
+The report is built from those outputs (its tables and figures are generated, not typed):
+
+```bash
+cd report && tectonic report.tex     # or: pdflatex report.tex (twice)
+```
 
 Other commands:
 
