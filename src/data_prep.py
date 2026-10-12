@@ -56,7 +56,7 @@ def clean(df: pd.DataFrame) -> pd.DataFrame:
       - Remove duplicates based on listing URL (keeping the latest scrape),
       - Parse complex strings (floors '7 / 9', area units like 'sot' for both Sahə and Torpaq sahəsi),
       - Handle missing values safely (constant imputation to avoid test leakage),
-      - Handle outliers with documented rules,
+      - Handle outliers with documented rules (allowing larger areas for land plots),
       - Drop leakage columns.
     """
     df = df.copy()
@@ -105,12 +105,15 @@ def clean(df: pd.DataFrame) -> pd.DataFrame:
         df = df.dropna(subset=required_cols)
 
     # 8. Outlier filtering (documented rule):
-    # - Price between 1,000 AZN and 10,000,000 AZN (removes extreme unpriced listings or data entry errors).
-    # - Area between 15 m² and 3,000 m² (removes micro-studios or erroneous massive entries).
+    # - Price between 1,000 AZN and 10,000,000 AZN.
+    # - Area: for land plots / houses allowing up to 50,000 m², standard buildings up to 3,000 m².
     if "price" in df.columns:
         df = df[(df["price"] >= 1000) & (df["price"] <= 10_000_000)]
+        
     if "Sahə" in df.columns:
-        df = df[(df["Sahə"] >= 15) & (df["Sahə"] <= 3000)]
+        is_land = df.get("Kateqoriya", pd.Series("", index=df.index)).astype(str).str.contains("Torpaq|Земля", case=False, na=False)
+        max_allowed_area = np.where(is_land, 50000.0, 3000.0)
+        df = df[(df["Sahə"] >= 15) & (df["Sahə"] <= max_allowed_area)]
 
     # 9. Handle missing values safely using constants (avoids test-set statistics leakage)
     for col in NUMERIC_FEATURES:
@@ -136,7 +139,6 @@ def make_features(df: pd.DataFrame) -> tuple[np.ndarray, np.ndarray, list[str]]:
 
     y = df["price"].values
 
-    # Select only whitelisted features that exist in the dataframe
     active_num = [c for c in NUMERIC_FEATURES if c in df.columns]
     active_cat = [c for c in CATEGORICAL_FEATURES if c in df.columns]
 
