@@ -117,6 +117,36 @@ def roc_auc(y_true, scores) -> float:
     return float((rank_sum_pos - n_pos * (n_pos + 1) / 2.0) / (n_pos * n_neg))
 
 
+def roc_curve(y_true, scores):
+    """
+    Points of the ROC curve, for plotting. Returns (fpr, tpr).
+
+    Slide a threshold from the highest score down. At each distinct score,
+    everything scoring at least that much is called premium, and we record
+        fpr = FP / n_neg   (standard listings wrongly called premium)
+        tpr = TP / n_pos   (premium listings found; this is recall)
+    The curve starts at (0, 0) and ends at (1, 1). The area under it is roc_auc.
+    """
+    y_true = np.asarray(y_true)
+    scores = np.asarray(scores, dtype=float)
+    n_pos = int(np.sum(y_true == 1))
+    n_neg = int(np.sum(y_true == 0))
+    if n_pos == 0 or n_neg == 0:
+        raise ValueError("The ROC curve needs both classes present in y_true.")
+
+    order = np.argsort(-scores, kind="stable")         # highest score first
+    sorted_scores = scores[order]
+    is_pos = y_true[order] == 1
+    tp = np.cumsum(is_pos)                             # premium listings above the threshold
+    fp = np.cumsum(~is_pos)                            # standard listings above the threshold
+
+    # Tied scores cross the threshold together: keep one point per distinct score.
+    last_of_tie = np.append(sorted_scores[1:] != sorted_scores[:-1], True)
+    fpr = np.concatenate([[0.0], fp[last_of_tie] / n_neg])
+    tpr = np.concatenate([[0.0], tp[last_of_tie] / n_pos])
+    return fpr, tpr
+
+
 def classification_metrics(y_true, y_pred, scores=None) -> dict:
     """
     All Task B metrics in one dict, ready for compare().

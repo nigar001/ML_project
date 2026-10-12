@@ -171,6 +171,35 @@ def test_roc_auc_needs_both_classes():
         evaluate.roc_auc([1, 1, 1], [0.2, 0.5, 0.9])
 
 
+def test_roc_curve_by_hand():
+    # Scores high to low: 0.8 (premium), 0.4 (standard), 0.35 (premium), 0.1 (standard).
+    # Lowering the threshold past each one: TP = 1, 1, 2, 2 and FP = 0, 1, 1, 2.
+    fpr, tpr = evaluate.roc_curve([0, 0, 1, 1], [0.1, 0.4, 0.35, 0.8])
+    assert fpr.tolist() == [0.0, 0.0, 0.5, 0.5, 1.0]
+    assert tpr.tolist() == [0.0, 0.5, 0.5, 1.0, 1.0]
+
+
+@pytest.mark.parametrize("n_distinct", [5, 1000])
+def test_roc_curve_matches_sklearn_and_its_area_is_roc_auc(n_distinct):
+    rng = np.random.default_rng(n_distinct)
+    y_true = rng.integers(0, 2, size=400)
+    # Few distinct scores means many ties, as a shallow tree produces.
+    noisy = rng.random(400) * 0.7 + y_true * 0.3               # premium tends to score higher
+    scores = np.floor(noisy * n_distinct) / n_distinct
+
+    fpr, tpr = evaluate.roc_curve(y_true, scores)
+    sk_fpr, sk_tpr, _ = skm.roc_curve(y_true, scores, drop_intermediate=False)
+    assert np.allclose(fpr, sk_fpr) and np.allclose(tpr, sk_tpr)
+
+    area = np.sum(np.diff(fpr) * (tpr[1:] + tpr[:-1]) / 2)      # trapezoids under the curve
+    assert area == pytest.approx(evaluate.roc_auc(y_true, scores), rel=1e-12)
+
+
+def test_roc_curve_needs_both_classes():
+    with pytest.raises(ValueError):
+        evaluate.roc_curve([0, 0, 0], [0.2, 0.5, 0.9])
+
+
 def test_metrics_return_plain_floats():
     assert type(evaluate.rmse([1, 2], [1, 3])) is float
     assert type(evaluate.roc_auc([0, 1], [0.2, 0.9])) is float
