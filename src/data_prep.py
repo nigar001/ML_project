@@ -18,17 +18,24 @@ LEAKAGE_COLUMNS: list[str] = [
     "total_price",
 ]
 
-# Columns to drop (IDs, URLs, raw text/descriptions that cause massive sparse matrices)
-EXCLUDE_TEXT_COLUMNS: list[str] = [
-    "description",
-    "attributes",
-    "estate_rel_url_x",
-    "estate_rel_url_y",
-    "owner_name",
-    "shop_name",
-    "raw_address",
-    "phone",
-    "date",
+# Explicit whitelists for features to prevent sparse matrix explosion and data leakage
+NUMERIC_FEATURES = [
+    "Sahə",
+    "Otaq sayı",
+    "floor",
+    "total_floors",
+    "Torpaq sahəsi",
+    "lat",
+    "lng",
+]
+
+CATEGORICAL_FEATURES = [
+    "Kateqoriya",
+    "Təmir",
+    "Çıxarış",
+    "İpoteka",
+    "location",
+    "city",
 ]
 
 
@@ -47,10 +54,10 @@ def clean(df: pd.DataFrame) -> pd.DataFrame:
     """
     Clean the raw frame:
       - Remove duplicates based on listing URL (keeping the latest scrape),
-      - Parse complex strings (floors '7 / 9', area units like 'sot'),
-      - Handle missing values,
-      - Handle outliers with documentation,
-      - Drop leakage and text columns.
+      - Parse complex strings (floors '7 / 9', area units like 'sot' for both Sahə and Torpaq sahəsi),
+      - Handle missing values safely (constant imputation to avoid test leakage),
+      - Handle outliers with documented rules,
+      - Drop leakage columns.
     """
     df = df.copy()
 
@@ -60,8 +67,8 @@ def clean(df: pd.DataFrame) -> pd.DataFrame:
     else:
         df = df.drop_duplicates()
 
-    # 2. Drop leakage and heavy text/ID columns
-    cols_to_drop = [col for col in LEAKAGE_COLUMNS + EXCLUDE_TEXT_COLUMNS if col in df.columns]
+    # 2. Drop leakage columns
+    cols_to_drop = [col for col in LEAKAGE_COLUMNS if col in df.columns]
     df = df.drop(columns=cols_to_drop)
 
     # 3. Clean target 'price'
@@ -70,48 +77,47 @@ def clean(df: pd.DataFrame) -> pd.DataFrame:
             df["price"] = df["price"].astype(str).str.replace(r"[^\d.]", "", regex=True)
         df["price"] = pd.to_numeric(df["price"], errors="coerce")
 
-    # 4. Parse Floor ('Mərtəbə'): convert '7 / 9' into two numeric columns (floor, total_floors)
+    # 4. Parse Floor ('Mərtəbə'): convert '7 / 9' into two numeric columns
     if "Mərtəbə" in df.columns:
         floor_split = df["Mərtəbə"].astype(str).str.split("/", expand=True)
         df["floor"] = pd.to_numeric(floor_split[0].str.replace(r"[^\d.]", "", regex=True), errors="coerce")
         df["total_floors"] = pd.to_numeric(floor_split[1].str.replace(r"[^\d.]", "", regex=True), errors="coerce") if floor_split.shape[1] > 1 else np.nan
-        df = df.drop(columns=["Mərtəbə"])
 
-    # 5. Clean numeric columns (Sahə, Otaq sayı, lat, lng, Torpaq sahəsi)
-    num_cols = ["Sahə", "Otaq sayı", "Torpaq sahəsi", "lat", "lng", "floor", "total_floors"]
-    for col in num_cols:
+    # 5. Clean area columns (Sahə & Torpaq sahəsi) with 'sot' / 'сот' unit conversion (*100 m2)
+    for col in ["Sahə", "Torpaq sahəsi"]:
+        if col in df.columns:
+            s_str = df[col].astype(str)
+            is_sot = s_str.str.contains("sot|сот", case=False, na=False)
+            extracted = pd.to_numeric(s_str.str.replace(r"[^\d.]", "", regex=True), errors="coerce")
+            df[col] = np.where(is_sot, extracted * 100.0, extracted)
+
+    # 6. Clean other numeric columns
+    for col in ["Otaq sayı", "lat", "lng", "floor", "total_floors"]:
         if col in df.columns:
             if df[col].dtype == object:
-                # Handle land area in 'sot' (e.g. '12 sot' -> multiply by 100 to convert to m2 approximately, or extract digits)
-                is_sot = df[col].astype(str).str.contains("sot|сот", case=False, na=False)
-                extracted_vals = pd.to_numeric(df[col].astype(str).str.replace(r"[^\d.]", "", regex=True), errors="coerce")
-                if col == "Torpaq sahəsi":
-                    extracted_vals = np.where(is_sot, extracted_vals * 100.0, extracted_vals)
-                df[col] = extracted_vals
-            df[col] = pd.to_numeric(df[col], errors="coerce")
+                df[col] = pd.to_numeric(df[col].astype(str).str.replace(r"[^\d.]", "", regex=True), errors="coerce")
+            else:
+                df[col] = pd.to_numeric(df[col], errors="coerce")
 
-    # 6. Drop rows missing critical target or area
+    # 7. Drop rows missing critical target or area
     required_cols = [c for c in ["price", "Sahə"] if c in df.columns]
     if required_cols:
         df = df.dropna(subset=required_cols)
 
-    # 7. Outlier filtering (documented rule):
-    # Rule: Price between 1,000 AZN and 10,000,000 AZN (removes extreme unpriced test listings or data entry errors).
-    # Area between 15 m² and 3,000 m² (removes unrealistic micro-studios or massive commercial listings).
+    # 8. Outlier filtering (documented rule):
+    # - Price between 1,000 AZN and 10,000,000 AZN (removes extreme unpriced listings or data entry errors).
+    # - Area between 15 m² and 3,000 m² (removes micro-studios or erroneous massive entries).
     if "price" in df.columns:
         df = df[(df["price"] >= 1000) & (df["price"] <= 10_000_000)]
     if "Sahə" in df.columns:
         df = df[(df["Sahə"] >= 15) & (df["Sahə"] <= 3000)]
 
-    # 8. Handle missing values for numerical features (impute with median)
-    for col in ["Otaq sayı", "floor", "total_floors", "Torpaq sahəsi", "lat", "lng"]:
+    # 9. Handle missing values safely using constants (avoids test-set statistics leakage)
+    for col in NUMERIC_FEATURES:
         if col in df.columns:
-            median_val = df[col].median()
-            df[col] = df[col].fillna(median_val if not pd.isna(median_val) else 0.0)
+            df[col] = df[col].fillna(0.0)
 
-    # 9. Handle missing values in categorical features
-    cat_cols = ["Kateqoriya", "Təmir", "Binanın növü", "location", "city", "İpoteka", "Çıxarış"]
-    for col in cat_cols:
+    for col in CATEGORICAL_FEATURES:
         if col in df.columns:
             df[col] = df[col].fillna("Unknown").astype(str)
 
@@ -120,7 +126,7 @@ def clean(df: pd.DataFrame) -> pd.DataFrame:
 
 def make_features(df: pd.DataFrame) -> tuple[np.ndarray, np.ndarray, list[str]]:
     """
-    Turn the cleaned frame into a numeric design matrix using selected features.
+    Turn the cleaned frame into a compact numeric design matrix using an explicit whitelist.
     Returns (X, y, feature_names).
     """
     df = df.copy()
@@ -129,16 +135,21 @@ def make_features(df: pd.DataFrame) -> tuple[np.ndarray, np.ndarray, list[str]]:
         raise ValueError("Target column 'price' not found in dataframe.")
 
     y = df["price"].values
+
+    # Select only whitelisted features that exist in the dataframe
+    active_num = [c for c in NUMERIC_FEATURES if c in df.columns]
+    active_cat = [c for c in CATEGORICAL_FEATURES if c in df.columns]
+
+    X_num = df[active_num].astype(float)
     
-    # Drop target and any remaining non-feature columns
-    X_df = df.drop(columns=["price"])
+    if active_cat:
+        X_cat = pd.get_dummies(df[active_cat], drop_first=True, dtype=float)
+        X_combined = pd.concat([X_num, X_cat], axis=1)
+    else:
+        X_combined = X_num
 
-    # Safe One-Hot Encoding (only on clean categorical columns, avoids explosion)
-    categorical_cols = X_df.select_dtypes(include=["object", "category"]).columns
-    X_encoded = pd.get_dummies(X_df, columns=categorical_cols, drop_first=True, dtype=float)
-
-    feature_names = list(X_encoded.columns)
-    X = X_encoded.values
+    feature_names = list(X_combined.columns)
+    X = X_combined.values
 
     return X, y, feature_names
 
@@ -173,7 +184,6 @@ def train_val_test_split(
     indices = np.arange(n)
 
     if stratify_labels is not None:
-        # Stratified split based on class labels (e.g. price tiers)
         labels = np.asarray(stratify_labels)
         train_idx_list, val_idx_list, test_idx_list = [], [], []
         
