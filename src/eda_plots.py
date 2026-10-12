@@ -67,12 +67,23 @@ def generate_eda_figures() -> None:
         plt.savefig(os.path.join(FIGURES_DIR, "rooms_distribution.png"), dpi=300)
         plt.close()
 
-    # 4. Location Coordinates (lat/lng scatter)
+    # 4. Location Coordinates (lat/lng scatter colored by price)
     if "lat" in df_clean.columns and "lng" in df_clean.columns:
-        plt.figure(figsize=(6, 5))
-        valid_coords = df_clean[(df_clean["lat"] > 38) & (df_clean["lat"] < 42) & (df_clean["lng"] > 44) & (df_clean["lng"] > 44)] # approximate Azerbaijan bounds if needed, or just plot all non-zero
-        plt.scatter(df_clean["lng"], df_clean["lat"], alpha=0.2, color="orange", s=5)
-        plt.title("Geographic Distribution (lat vs lng)")
+        plt.figure(figsize=(7, 5))
+        # Filter strictly for Baku/Azerbaijan region bounds to avoid outlier distortion
+        valid_geo = df_clean[
+            (df_clean["lat"] >= 40.0) & (df_clean["lat"] <= 40.7) & 
+            (df_clean["lng"] >= 49.5) & (df_clean["lng"] <= 50.6)
+        ]
+        
+        sc = plt.scatter(
+            valid_geo["lng"], valid_geo["lat"], 
+            c=valid_geo["price"] / 1000, 
+            cmap="viridis", alpha=0.4, s=10
+        ]
+        cbar = plt.colorbar(sc)
+        cbar.set_label("Price (k AZN)")
+        plt.title("Geographic Distribution & Price Heatmap")
         plt.xlabel("Longitude")
         plt.ylabel("Latitude")
         plt.tight_layout()
@@ -90,7 +101,7 @@ def generate_eda_figures() -> None:
     plt.savefig(os.path.join(FIGURES_DIR, "tier_class_balance.png"), dpi=300)
     plt.close()
 
-    print("All EDA figures generated successfully!")
+    print("All EDA figures generated successfully with corrected bounds!")
 
 
 if __name__ == "__main__":
