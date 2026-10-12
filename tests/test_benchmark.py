@@ -114,6 +114,13 @@ def test_sklearn_baselines_use_matched_settings():
     assert svc.steps[-1][1].C == pytest.approx(1 / (lambda_ * n_train))
 
 
+def test_exact_svm_solver_is_opt_in():
+    default = [s["name"] for s in benchmark.model_specs("classification")]
+    with_exact = [s["name"] for s in benchmark.model_specs("classification", exact_svm=True)]
+    assert "sklearn: SGDClassifier" in default and "sklearn: LinearSVC" not in default
+    assert with_exact == default + ["sklearn: LinearSVC"]
+
+
 def test_every_team_model_names_a_baseline_that_exists():
     for task in ("regression", "classification"):
         specs = benchmark.model_specs(task)

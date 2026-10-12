@@ -14,6 +14,7 @@ What "fair" means in this file:
 Run from the repo root:
     python -m src.benchmark --synthetic     # stand-in data, to check the machinery
     python -m src.benchmark                 # real data (needs a working data stage)
+    python -m src.benchmark --exact-svm     # also run the slow exact SVM solver
 
 A model that is not written yet (its fit raises NotImplementedError) is listed
 as "not implemented yet" and skipped, so the benchmark runs at every stage of
@@ -85,6 +86,9 @@ def sklearn_linear_svc(lambda_: float, n_train: int):
     Linear SVM solved exactly. LinearSVC minimises  1/2 ||w||^2 + C * sum hinge;
     dividing by C*n gives our objective with lambda = 1 / (C * n).
     (It also penalises the bias slightly, which our objective does not.)
+
+    Optional (--exact-svm): with a small lambda it needs about a minute per fold
+    on the real data and may still stop before converging.
     """
     C = 1.0 / (lambda_ * n_train)
     # A high iteration cap: this solver is the "exact answer", so it must converge.
@@ -105,7 +109,7 @@ def _spec(name: str, make, scale: bool = False, baseline: str | None = None) -> 
     return {"name": name, "make": make, "scale": scale, "baseline": baseline}
 
 
-def model_specs(task: str, config: dict = CONFIG) -> list[dict]:
+def model_specs(task: str, config: dict = CONFIG, exact_svm: bool = False) -> list[dict]:
     """Our models and their baselines for one task, in table order."""
     limits = config["tree"]
     if task == "regression":
@@ -119,7 +123,7 @@ def model_specs(task: str, config: dict = CONFIG) -> list[dict]:
 
     criterion = config["tree_criterion"]
     lambda_ = config["svm"]["lambda_"]
-    return [
+    specs = [
         _spec("Ours: tree", baseline="sklearn: DecisionTreeClassifier",
               make=lambda n: DecisionTree(
                   task="classification", criterion=criterion, random_state=SEED, **limits)),
@@ -130,8 +134,10 @@ def model_specs(task: str, config: dict = CONFIG) -> list[dict]:
         _spec("Ours: SVM (Pegasos)", baseline="sklearn: SGDClassifier", scale=True,
               make=lambda n: PegasosSVM(lambda_=lambda_, random_state=SEED)),
         _spec("sklearn: SGDClassifier", make=lambda n: sklearn_sgd_svm(lambda_)),
-        _spec("sklearn: LinearSVC", make=lambda n: sklearn_linear_svc(lambda_, n)),
     ]
+    if exact_svm:
+        specs.append(_spec("sklearn: LinearSVC", make=lambda n: sklearn_linear_svc(lambda_, n)))
+    return specs
 
 
 # --- Folds (our own NumPy code) ---------------------------------------------
@@ -349,7 +355,8 @@ def timing_by_size(spec, X, y_price, task, sizes, seed=SEED, log_price=True):
 
 
 # --- The whole benchmark -----------------------------------------------------
-def run(X, y_price, feature_names=None, config: dict = CONFIG, k: int = N_FOLDS) -> dict:
+def run(X, y_price, feature_names=None, config: dict = CONFIG, k: int = N_FOLDS,
+        exact_svm: bool = False) -> dict:
     """Run both tasks, print the tables, and return every number in one dict."""
     X = np.asarray(X, dtype=float)
     y_price = np.asarray(y_price, dtype=float)
@@ -362,7 +369,7 @@ def run(X, y_price, feature_names=None, config: dict = CONFIG, k: int = N_FOLDS)
         "classification": ("task_b", "Task B: price tier (premium vs standard)"),
     }
     for task, (key, title) in titles.items():
-        specs = model_specs(task, config)
+        specs = model_specs(task, config, exact_svm)
         for spec in specs:
             scores = cross_validate(spec, X, y_price, task, k, log_price=log_price)
             if scores is None:
@@ -387,8 +394,8 @@ def run(X, y_price, feature_names=None, config: dict = CONFIG, k: int = N_FOLDS)
                 results["agreement"][f"{our_spec['name']} vs {baseline['name']} ({key})"] = report
 
         # Time against row count: our models and the baseline each is matched with.
-        # (LinearSVC is left out: its C = 1/(lambda*n) changes with n, so its time
-        # does not show how the solver scales.)
+        # (The exact SVM is left out: its C = 1/(lambda*n) changes with n, so its
+        # time does not show how the solver scales.)
         sizes = [n for n in (1000, 5000, 20000) if n <= len(X)] or [len(X)]
         matched = {spec["baseline"] for spec in specs if spec["baseline"]}
         for spec in specs:
@@ -441,6 +448,8 @@ def main(argv=None) -> None:
     parser = argparse.ArgumentParser(description="Benchmark our models against scikit-learn.")
     parser.add_argument("--synthetic", action="store_true",
                         help="use seeded stand-in listings instead of the real data")
+    parser.add_argument("--exact-svm", action="store_true",
+                        help="also run LinearSVC, the exact solver (slow on the real data)")
     args = parser.parse_args(argv)
 
     if args.synthetic:
@@ -448,7 +457,7 @@ def main(argv=None) -> None:
         X, y_price, feature_names = synthetic.make_listings()
     else:
         X, y_price, feature_names = load_real_data()
-    run(X, y_price, feature_names)
+    run(X, y_price, feature_names, exact_svm=args.exact_svm)
 
 
 if __name__ == "__main__":
