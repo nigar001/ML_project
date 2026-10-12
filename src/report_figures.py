@@ -18,7 +18,8 @@ DPI = 200
 
 def _axes(title: str, xlabel: str, ylabel: str, size=(6.0, 4.0)):
     fig, ax = plt.subplots(figsize=size)
-    ax.set_title(textwrap.fill(title, width=int(size[0] * 10)), fontsize=10)   # long titles wrap
+    # The title belongs to the whole figure, so long axis labels cannot push it off the edge.
+    fig.suptitle(textwrap.fill(title, width=int(size[0] * 9)), fontsize=10)
     ax.set_xlabel(xlabel)
     ax.set_ylabel(ylabel)
     ax.grid(alpha=0.3)
@@ -28,7 +29,7 @@ def _axes(title: str, xlabel: str, ylabel: str, size=(6.0, 4.0)):
 
 def _save(fig, path: str) -> str:
     fig.tight_layout()
-    fig.savefig(path, dpi=DPI)
+    fig.savefig(path, dpi=DPI, bbox_inches="tight")      # keeps a legend placed outside the axes
     plt.close(fig)
     return path
 
@@ -77,6 +78,7 @@ def objective_plot(history, title: str, path: str) -> str:
     fig, ax = _axes(title, "Recorded step", "Objective J(w, b)")
     ax.plot(np.arange(1, len(history) + 1), history, color=COLORS[0], linewidth=2, marker="o",
             markersize=3)
+    ax.xaxis.get_major_locator().set_params(integer=True)
     return _save(fig, path)
 
 
@@ -106,6 +108,6 @@ def error_by_group_plot(mean_error: dict, title: str, ylabel: str, path: str) ->
         ax.bar(positions, [by_group[g] for g in groups], width=width * 0.92,
                color=COLORS[i % len(COLORS)], label=name)
     ax.set_xticks(np.arange(len(groups)) + 0.4 - width / 2, [str(g) for g in groups],
-                  rotation=20, ha="right", fontsize=8)
-    ax.legend(fontsize=8)
+                  rotation=20, ha="right", fontsize=9)
+    ax.legend(fontsize=8, loc="upper left", bbox_to_anchor=(1.01, 1.0))   # beside the bars
     return _save(fig, path)
