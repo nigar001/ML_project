@@ -109,13 +109,18 @@ def _spec(name: str, make, scale: bool = False, baseline: str | None = None) -> 
     return {"name": name, "make": make, "scale": scale, "baseline": baseline}
 
 
-def model_specs(task: str, config: dict = CONFIG, exact_svm: bool = False) -> list[dict]:
-    """Our models and their baselines for one task, in table order."""
+def model_specs(task: str, config: dict = CONFIG, exact_svm: bool = False,
+                model_classes=None) -> list[dict]:
+    """
+    Our models and their baselines for one task, in table order.
+    model_classes: (tree class, SVM class) to use in place of the team's own.
+    """
+    tree_class, svm_class = model_classes or (DecisionTree, PegasosSVM)
     limits = config["tree"]
     if task == "regression":
         return [
             _spec("Ours: tree", baseline="sklearn: DecisionTreeRegressor",
-                  make=lambda n: DecisionTree(
+                  make=lambda n: tree_class(
                       task="regression", criterion="mse", random_state=SEED, **limits)),
             _spec("sklearn: DecisionTreeRegressor",
                   make=lambda n: sklearn_tree("regression", **limits)),
@@ -125,14 +130,14 @@ def model_specs(task: str, config: dict = CONFIG, exact_svm: bool = False) -> li
     lambda_ = config["svm"]["lambda_"]
     specs = [
         _spec("Ours: tree", baseline="sklearn: DecisionTreeClassifier",
-              make=lambda n: DecisionTree(
+              make=lambda n: tree_class(
                   task="classification", criterion=criterion, random_state=SEED, **limits)),
         _spec("sklearn: DecisionTreeClassifier",
               make=lambda n: sklearn_tree("classification", criterion, **limits)),
         # Our SVM gets features standardized by the harness; the sklearn SVMs
         # standardize inside their own Pipeline.
         _spec("Ours: SVM (Pegasos)", baseline="sklearn: SGDClassifier", scale=True,
-              make=lambda n: PegasosSVM(lambda_=lambda_, random_state=SEED)),
+              make=lambda n: svm_class(lambda_=lambda_, random_state=SEED)),
         _spec("sklearn: SGDClassifier", make=lambda n: sklearn_sgd_svm(lambda_)),
     ]
     if exact_svm:
@@ -356,7 +361,7 @@ def timing_by_size(spec, X, y_price, task, sizes, seed=SEED, log_price=True):
 
 # --- The whole benchmark -----------------------------------------------------
 def run(X, y_price, feature_names=None, config: dict = CONFIG, k: int = N_FOLDS,
-        exact_svm: bool = False) -> dict:
+        exact_svm: bool = False, model_classes=None) -> dict:
     """Run both tasks, print the tables, and return every number in one dict."""
     X = np.asarray(X, dtype=float)
     y_price = np.asarray(y_price, dtype=float)
@@ -369,7 +374,7 @@ def run(X, y_price, feature_names=None, config: dict = CONFIG, k: int = N_FOLDS,
         "classification": ("task_b", "Task B: price tier (premium vs standard)"),
     }
     for task, (key, title) in titles.items():
-        specs = model_specs(task, config, exact_svm)
+        specs = model_specs(task, config, exact_svm, model_classes)
         for spec in specs:
             scores = cross_validate(spec, X, y_price, task, k, log_price=log_price)
             if scores is None:
@@ -420,8 +425,11 @@ def run(X, y_price, feature_names=None, config: dict = CONFIG, k: int = N_FOLDS,
     return results
 
 
-def load_real_data():
-    """Features from the real data stage, refusing to continue if it is not ready."""
+def load_real_data(with_table: bool = False):
+    """
+    Features from the real data stage, refusing to continue if it is not ready.
+    Returns (X, y_price, feature_names), plus the cleaned table if with_table.
+    """
     df = data_prep.clean(data_prep.load_raw())
 
     if "estate_rel_url_x" in df.columns and df["estate_rel_url_x"].duplicated().any():
@@ -441,6 +449,8 @@ def load_real_data():
     X, y_price, feature_names = data_prep.make_features(df)
     if np.isnan(np.asarray(X, dtype=float)).any():
         raise SystemExit("Data stage not ready: the feature table contains missing values.")
+    if with_table:
+        return X, y_price, feature_names, df
     return X, y_price, feature_names
 
 

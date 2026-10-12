@@ -17,6 +17,8 @@ from sklearn.preprocessing import StandardScaler
 
 from src import benchmark, data_prep, synthetic
 from src.decision_tree import Node
+from tests.standins import StandInSVM as _StandInSVM
+from tests.standins import StandInTree as _StandInTree
 
 CLASSIFICATION_METRICS = ["Accuracy", "Precision", "Recall", "F1", "ROC-AUC"]
 TIMINGS = ["Fit s", "Predict s"]
@@ -256,43 +258,6 @@ def test_run_reports_or_skips_every_model(listings, capsys):
             if not spec["baseline"]:
                 assert reported, "scikit-learn baselines always run"
     assert "Task A" in printed and "Task B" in printed and "±" in printed
-
-
-class _StandInTree:
-    """Has our tree's constructor and methods, but borrows the library's maths."""
-
-    def __init__(self, task, criterion, random_state, **limits):
-        self._model = benchmark.sklearn_tree(task, criterion, **limits)
-
-    def fit(self, X, y):
-        self._model.fit(X, y)
-        self.tree_ = self._model.tree_
-        self.get_depth, self.get_n_leaves = self._model.get_depth, self._model.get_n_leaves
-        return self
-
-    def predict(self, X):
-        return self._model.predict(X)
-
-    def predict_proba(self, X):
-        return self._model.predict_proba(X)
-
-
-class _StandInSVM:
-    """Has our SVM's constructor and attributes (w, b), fitted by the library's SGD."""
-
-    def __init__(self, lambda_, random_state):
-        self._model = benchmark.SGDClassifier(loss="hinge", alpha=lambda_, random_state=random_state)
-
-    def fit(self, X, y):
-        self._model.fit(X, y)
-        self.w, self.b = self._model.coef_.ravel(), float(self._model.intercept_[0])
-        return self
-
-    def decision_function(self, X):
-        return self._model.decision_function(X)
-
-    def predict(self, X):
-        return self._model.predict(X)
 
 
 def test_run_compares_team_models_once_they_exist(listings, monkeypatch, capsys):

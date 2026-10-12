@@ -61,3 +61,22 @@ pip install -r requirements.txt
 # put the dataset in data/ (see data/README.md), then:
 python -m src.run_all
 ```
+
+`python -m src.run_all` (about 30 seconds) does everything: cleans the data, makes
+one seeded stratified train / validation / test split, draws the EDA figures,
+cross-validates our models against scikit-learn, evaluates once on the test
+split, and runs the diagnostics and the error analysis. It writes:
+
+- `results/results.json` — every number,
+- `results/summary.md` — the results tables,
+- `report/figures/*.png` — every figure.
+
+A model that is not implemented yet is listed as "not implemented yet" and skipped.
+
+Other commands:
+
+```bash
+python -m src.benchmark              # only the comparison with scikit-learn
+python -m src.run_all --synthetic    # made-up listings, no dataset needed: checks the machinery
+python -m pytest tests/ -q           # the tests
+```

@@ -176,7 +176,9 @@ def _format_value(value) -> str:
 
 
 def _format_number(x) -> str:
-    """4 decimals for scores in [-1, 1]-ish ranges, thousands separators for prices."""
+    """4 decimals for scores in [-1, 1]-ish ranges, thousands separators for prices and counts."""
+    if isinstance(x, (int, np.integer)) and not isinstance(x, bool):
+        return f"{x:,}"                             # a count: no decimals
     x = float(x)
     if abs(x) >= 1000:
         return f"{x:,.0f}"
