@@ -30,20 +30,47 @@ class Node:
         self.value = None        # leaf prediction (class label/proba or mean)
 
     def is_leaf(self) -> bool:
-        return self.left is None and self.right is None
+        if self.left is None and self.right is None:
+            return True
+        return False
 
 
 class DecisionTree:
+
     def __init__(
         self,
-        task: str = "classification",   # "classification" | "regression"
-        criterion: str = "gini",        # "gini" | "entropy" | "mse"
+        task: str = "classification",
+        criterion: str = "gini",
         max_depth: int | None = None,
         min_samples_split: int = 2,
         min_samples_leaf: int = 1,
         min_impurity_decrease: float = 0.0,
         random_state: int = 42,
     ):
+        # task determines whether the target is a class or a number.
+        if task not in ("classification", "regression"):
+            raise ValueError("task must be classification or regression")
+
+        # Gini and entropy are classification criteria.
+        # MSE is a regression criterion.
+        if task == "classification" and criterion not in ("gini", "entropy"):
+            raise ValueError("Classification requires gini or entropy")
+
+        if task == "regression" and criterion != "mse":
+            raise ValueError("Regression requires criterion='mse'")
+
+        if max_depth is not None and max_depth < 0:
+            raise ValueError("max_depth must be non-negative or None")
+
+        if min_samples_split < 2:
+            raise ValueError("min_samples_split must be at least 2")
+
+        if min_samples_leaf < 1:
+            raise ValueError("min_samples_leaf must be at least 1")
+
+        if min_impurity_decrease < 0:
+            raise ValueError("min_impurity_decrease cannot be negative")
+
         self.task = task
         self.criterion = criterion
         self.max_depth = max_depth
@@ -51,7 +78,11 @@ class DecisionTree:
         self.min_samples_leaf = min_samples_leaf
         self.min_impurity_decrease = min_impurity_decrease
         self.random_state = random_state
-        self.root: Node | None = None
+
+        self.root = None
+        self.classes_ = None
+        self.n_features_in_ = None
+        self._rng = np.random.default_rng(random_state)
 
     # --- impurity -----------------------------------------------------------
     def _impurity(self, y) -> float:
