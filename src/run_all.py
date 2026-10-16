@@ -318,9 +318,9 @@ def run_pipeline(X, y_price, feature_names, rows: pd.DataFrame | None = None,
                         "Weight (positive pushes towards premium)",
                         figure_path(f"svm_weights_{slug(name)}"))
                 history = model_api.objective_history(model)
-                if history is not None and len(history) > 1:
+                if history is not None:
                     report_figures.objective_plot(
-                        history, f"{title}: training objective", figure_path(f"objective_{slug(name)}"))
+                        *history, f"{title}: training objective", figure_path(f"objective_{slug(name)}"))
 
         if roc_curves:
             report_figures.roc_plot(roc_curves, f"{label}ROC curves, test split",

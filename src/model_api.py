@@ -40,5 +40,17 @@ def weights_and_bias(svm):
 
 
 def objective_history(svm):
-    """The training objective J recorded during fitting (one value per step or epoch), or None."""
-    return _first_attribute(svm, ["objective_history_", "history_", "losses_"])
+    """
+    The training objective J recorded during fitting, as (steps, values), or None.
+
+    Accepts either a plain list of J values (one per recorded step) or a list of
+    (step, J) pairs, which is what our PegasosSVM stores in history_.
+    """
+    history = _first_attribute(svm, ["objective_history_", "history_", "losses_"])
+    if history is None or len(history) < 2:
+        return None
+    if history.ndim == 2 and history.shape[1] == 2:                 # (step, J) pairs
+        return history[:, 0], history[:, 1]
+    if history.ndim == 1:
+        return np.arange(1, len(history) + 1, dtype=float), history
+    return None

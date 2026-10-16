@@ -42,7 +42,8 @@ class StandInTree:
 class StandInSVM:
     """Has our SVM's constructor and attributes (w, b), fitted by the library's SGD."""
 
-    def __init__(self, lambda_, random_state):
+    def __init__(self, lambda_, random_state, **training_settings):
+        # Training settings meant for our PegasosSVM (e.g. n_epochs) do not apply here.
         self.lambda_, self.random_state = lambda_, random_state
         self._model = SGDClassifier(loss="hinge", alpha=lambda_, random_state=random_state)
 

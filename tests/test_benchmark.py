@@ -123,6 +123,15 @@ def test_exact_svm_solver_is_opt_in():
     assert with_exact == default + ["sklearn: LinearSVC"]
 
 
+def test_svm_training_settings_reach_our_svm_only():
+    config = dict(benchmark.CONFIG, svm={"lambda_": 1e-3, "n_epochs": 2})
+    specs = {s["name"]: s for s in benchmark.model_specs("classification", config)}
+    ours = specs["Ours: SVM (Pegasos)"]["make"](100)
+    assert ours.lambda_ == 1e-3 and ours.n_epochs == 2
+    library = specs["sklearn: SGDClassifier"]["make"](100)
+    assert library.steps[-1][1].alpha == 1e-3                    # matched on lambda only
+
+
 def test_every_team_model_names_a_baseline_that_exists():
     for task in ("regression", "classification"):
         specs = benchmark.model_specs(task)

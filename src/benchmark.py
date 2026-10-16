@@ -54,6 +54,8 @@ CONFIG = {
         "min_impurity_decrease": 0.0,
     },
     "tree_criterion": "gini",       # "gini" | "entropy" (Task B)
+    # lambda_ is matched with the library SVM (alpha). Any other entry (e.g. n_epochs)
+    # is a training setting passed to our PegasosSVM only.
     "svm": {"lambda_": 1e-4},
     "log_price": True,              # Task A: model log(price) instead of price
 }
@@ -128,6 +130,7 @@ def model_specs(task: str, config: dict = CONFIG, exact_svm: bool = False,
 
     criterion = config["tree_criterion"]
     lambda_ = config["svm"]["lambda_"]
+    svm_settings = dict(config["svm"])                 # lambda_ plus our SVM's training settings
     specs = [
         _spec("Ours: tree", baseline="sklearn: DecisionTreeClassifier",
               make=lambda n: tree_class(
@@ -137,7 +140,7 @@ def model_specs(task: str, config: dict = CONFIG, exact_svm: bool = False,
         # Our SVM gets features standardized by the harness; the sklearn SVMs
         # standardize inside their own Pipeline.
         _spec("Ours: SVM (Pegasos)", baseline="sklearn: SGDClassifier", scale=True,
-              make=lambda n: svm_class(lambda_=lambda_, random_state=SEED)),
+              make=lambda n: svm_class(random_state=SEED, **svm_settings)),
         _spec("sklearn: SGDClassifier", make=lambda n: sklearn_sgd_svm(lambda_)),
     ]
     if exact_svm:
