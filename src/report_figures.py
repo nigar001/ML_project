@@ -81,6 +81,24 @@ def objective_plot(steps, values, title: str, path: str) -> str:
     return _save(fig, path)
 
 
+def sweep_plot(x, series: dict, title: str, xlabel: str, ylabel: str, path: str,
+               log_x: bool = False, mark_x=None) -> str:
+    """
+    A validation curve: one line per series (e.g. training and validation score)
+    against a setting. mark_x draws a dashed line at the chosen value.
+    """
+    fig, ax = _axes(title, xlabel, ylabel)
+    for i, (name, values) in enumerate(series.items()):
+        ax.plot(x, values, color=COLORS[i % len(COLORS)], linewidth=2, marker="o", markersize=4,
+                label=name)
+    if mark_x is not None:
+        ax.axvline(mark_x, color="grey", linestyle="--", linewidth=1, label=f"chosen: {mark_x:g}")
+    if log_x:
+        ax.set_xscale("log")
+    ax.legend(fontsize=8)
+    return _save(fig, path)
+
+
 def predicted_vs_actual_plot(price_true, price_pred, title: str, path: str) -> str:
     """Predicted against actual price, both on log axes. Points on the diagonal are exact."""
     price_true, price_pred = np.asarray(price_true, float), np.asarray(price_pred, float)

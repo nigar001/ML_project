@@ -16,7 +16,8 @@ Stages:
      margin, support vectors,
   7. error analysis: where do the models fail?
   8. save every number (results.json, summary.md), every figure (PNG) and the
-     report's tables (LaTeX).
+     report's tables (LaTeX),
+  9. (real data only) Member 3's wider SVM studies in svm_experiments.py.
 
 Everything is seeded from data_prep.SEED. Nothing from the test split sets the
 tier threshold, the scaling statistics or any setting. A model that is not
@@ -401,6 +402,13 @@ def main(argv=None) -> None:
     run_pipeline(X, y_price, feature_names, rows, out_dir=out_dir, fig_dir=fig_dir,
                  model_classes=model_classes, tuning_run=load_tuning(), label=label,
                  table_dir=table_dir)
+
+    # Member 3's wider SVM studies (learning-rate schedules, epochs, batch size, random
+    # Fourier features) draw report/figures/svm_*.png. They run on her own feature set
+    # and split, so their numbers are reported as a separate study, not in the tables above.
+    if not (args.synthetic or args.standins) and importlib.util.find_spec("src.svm_experiments"):
+        print("\n== 9. SVM studies (src/svm_experiments.py) ==")
+        importlib.import_module("src.svm_experiments").main()
 
 
 if __name__ == "__main__":
