@@ -47,12 +47,9 @@ class DecisionTree:
         min_impurity_decrease: float = 0.0,
         random_state: int = 42,
     ):
-        # task determines whether the target is a class or a number.
         if task not in ("classification", "regression"):
             raise ValueError("task must be classification or regression")
 
-        # Gini and entropy are classification criteria.
-        # MSE is a regression criterion.
         if task == "classification" and criterion not in ("gini", "entropy"):
             raise ValueError("Classification requires gini or entropy")
 
