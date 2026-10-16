@@ -181,7 +181,7 @@ class DecisionTree:
 
         goes_left = column <= threshold
 
-        n_left = int(goes_left.sum()) #since we have here true and false as classification it will be 2
+        n_left = int(goes_left.sum()) #since we have here true and false as classification it will be 3
         n_right = n - n_left
 
         # For example if a leaf has less than predefines min samples then stop
@@ -189,6 +189,8 @@ class DecisionTree:
             return None
 
         # Calculate each child's impurity.
+        # bascially how pure the data is meant by impurity
+
         left_impurity = self._impurity(
             y[goes_left]
         )
@@ -204,29 +206,57 @@ class DecisionTree:
         )
 
         # Positive gain means the split reduces impurity.
+        # Basically we want to make the node data, after each feature split as pure as possbile, Like parent_data = [t, t, t, t, f, f, f, f]
+        # As visible, it is not pure, but let's say we want to split regarding to a column and its some threshold we get left = [t,t,t,f] right = [t,f,f,f]
+        # So the data is purer compared to compared to parent node data
+
         return parent_impurity - children_impurity
 
 
     def _best_split(self, X, y):
-        """
-        Search features & candidate thresholds; return the split that
-        maximizes impurity decrease (feature, threshold, decrease), or
-        None if no valid split improves things.
-        """
+        # We are basically trying all features and its candidate thresholds
 
-        number_of_features, number_of_features = X.shape
+        n_samples, n_features = X.shape
+
+        if n_samples < 2:
+            return None
+        # Of course we should check the parent data impurity to compare which feature and which throshold makes it better(with less impurity)
+
         parent_impurity = self._impurity(y)
 
         best_split = None
-        best_feature = None
-        best_decrease = 0.0
+        best_decrease = -np.inf
 
+        # Examine every feature.
+        for feature in self._rng.permutation(n_features):
 
+            # Select one feature column.
+            column = X[:, feature]
 
+            # Generate possible thresholds for this feature.
+            for threshold in self._candidate_thresholds(column):
 
+                decrease = self._impurity_decrease(
+                    column,
+                    y,
+                    threshold,
+                    parent_impurity,
+                )
 
+                if (
+                    decrease is not None
+                    and decrease > best_decrease
+                ):
 
-        raise NotImplementedError("TODO: best split search")
+                    best_decrease = decrease
+
+                    best_split = (
+                        int(feature),
+                        float(threshold),
+                        float(decrease),
+                    )
+        return best_split
+
 
     # --- grow / predict -----------------------------------------------------
     def _grow(self, X, y, depth: int) -> Node:
