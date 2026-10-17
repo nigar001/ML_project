@@ -110,18 +110,13 @@ class DecisionTree:
                 return 1 - np.sum(np.power(class_probabilities, 2))
 
             elif self.criterion == "entropy":
-                return -1 * (np.sum(class_probabilities * np.log2(class_probabilities)))
+                return float(-1 * (np.sum(class_probabilities * np.log2(class_probabilities))))
 
             else:
                 raise ValueError(
                     f"Unknown classification criterion: {self.criterion}"
                 )
-
         elif self.task == "regression":
-            if self.criterion not in ("mse", "variance"):
-                raise ValueError(
-                    f"Unknown regression criterion: {self.criterion}"
-                )
             mean_y = float(np.mean(y))
             return float(np.mean((y - mean_y) ** 2))
 
@@ -181,7 +176,7 @@ class DecisionTree:
 
         goes_left = column <= threshold
 
-        n_left = int(goes_left.sum()) #since we have here true and false as classification it will be 2
+        n_left = int(goes_left.sum()) #since we have here true and false as classification it will be 3
         n_right = n - n_left
 
         # For example if a leaf has less than predefines min samples then stop
@@ -189,6 +184,8 @@ class DecisionTree:
             return None
 
         # Calculate each child's impurity.
+        # bascially how pure the data is meant by impurity
+
         left_impurity = self._impurity(
             y[goes_left]
         )
@@ -204,51 +201,222 @@ class DecisionTree:
         )
 
         # Positive gain means the split reduces impurity.
+        # Basically we want to make the node data, after each feature split as pure as possbile, Like parent_data = [t, t, t, t, f, f, f, f]
+        # As visible, it is not pure, but let's say we want to split regarding to a column and its some threshold we get left = [t,t,t,f] right = [t,f,f,f]
+        # So the data is purer compared to compared to parent node data
+
         return parent_impurity - children_impurity
 
 
     def _best_split(self, X, y):
-        """
-        Search features & candidate thresholds; return the split that
-        maximizes impurity decrease (feature, threshold, decrease), or
-        None if no valid split improves things.
-        """
+        # We are basically trying all features and its candidate thresholds
 
-        number_of_features, number_of_features = X.shape
+        n_samples, n_features = X.shape
+
+        if n_samples < 2:
+            return None
+        # Of course we should check the parent data impurity to compare which feature and which throshold makes it better(with less impurity)
+
         parent_impurity = self._impurity(y)
 
         best_split = None
-        best_feature = None
-        best_decrease = 0.0
+        best_decrease = -np.inf
 
+        # Examine every feature.
+        for feature in self._rng.permutation(n_features):
 
+            # Select one feature column.
+            column = X[:, feature]
 
+            # Generate possible thresholds for this feature.
+            for threshold in self._candidate_thresholds(column):
 
+                decrease = self._impurity_decrease(
+                    column,
+                    y,
+                    threshold,
+                    parent_impurity,
+                )
 
+                if (
+                    decrease is not None
+                    and decrease > best_decrease
+                ):
 
-        raise NotImplementedError("TODO: best split search")
+                    best_decrease = decrease
 
-    # --- grow / predict -----------------------------------------------------
+                    best_split = (
+                        int(feature),
+                        float(threshold),
+                        float(decrease),
+                    )
+        return best_split
+
+    def _leaf_value(self, y):
+        """
+        Classification:
+            Return the probability of each class.
+
+        Regression:
+            Return the mean target value.
+        """
+        """
+            What a leaf predicts.
+            Classification: the fraction of each class in the leaf, in the
+                order of self.classes_. E.g. 3 'low' and 1 'high' -> [0.75, 0.25].
+                predict() takes the most likely class; predict_proba() returns this.
+            Regression: the mean of y. The mean is the single number that
+                minimizes squared error, which is exactly what MSE measures.
+        """
+        if self.task == "classification":
+            # Finding the count of each class
+            counts = np.array(
+                [
+                    np.sum(y == c)
+                    for c in self.classes_
+                ],
+                dtype=float,
+            )
+            return counts / counts.sum()
+
+        elif self.task == "regression":
+            return float(np.mean(y))
+
+    def _make_leaf(self, y) -> Node:
+        leaf = Node()
+        leaf.value = self._leaf_value(y)
+        return leaf
+
     def _grow(self, X, y, depth: int) -> Node:
-        """Recursively build the tree, respecting the stopping rules."""
-        raise NotImplementedError("TODO: recursive grow")
+        """
+        Recursively build the tree.
+
+        At each node:
+          1. Check the stopping rules. If any fires, return a leaf.
+          2. Otherwise find the best split.
+          3. If no split is good enough, return a leaf.
+          4. Otherwise split the data and grow the two children (depth + 1).
+        """
+        n_samples = len(y)
+
+        # --- Stopping rules (these control overfitting) ---
+        reached_max_depth = self.max_depth is not None and depth >= self.max_depth
+        too_few_samples = n_samples < self.min_samples_split
+        already_pure = self._impurity(y) == 0.0  # nothing left to improve
+
+        if reached_max_depth or too_few_samples or already_pure:
+            return self._make_leaf(y)
+
+        # --- Find the best question to ask here ---
+        split = self._best_split(X, y)
+
+        # No valid split (e.g. min_samples_leaf rules everything out,
+        # or all features are constant) -> leaf.
+        if split is None:
+            return self._make_leaf(y)
+
+        feature, threshold, decrease = split
+
+        # The best split doesn't improve purity enough to be worth it -> leaf.
+        if decrease < self.min_impurity_decrease:
+            return self._make_leaf(y)
+
+        # --- Split and recurse ---
+        goes_left = X[:, feature] <= threshold
+
+        node = Node()
+        node.feature = feature
+        node.threshold = threshold
+        node.left = self._grow(X[goes_left], y[goes_left], depth + 1)
+        node.right = self._grow(X[~goes_left], y[~goes_left], depth + 1)
+        return node
 
     def fit(self, X, y):
+
+        # 1. Convert input data into NumPy arrays
         X = np.asarray(X, dtype=float)
         y = np.asarray(y)
-        self.root = self._grow(X, y, depth=0)
+
+        # 2. Check that X is a table (2D array)
+        if X.ndim != 2:
+            raise ValueError("X must have rows and columns")
+
+        if X.shape[1] == 0:
+            raise ValueError("X must contain at least one feature")
+
+        # 3. Check that every sample has a target value
+        if len(X) != len(y):
+            raise ValueError("X and y must have the same number of samples")
+
+        # 4. Check that the dataset is not empty
+        if len(y) == 0:
+            raise ValueError("Cannot fit on an empty dataset")
+
+        # 5. Remember how many features each sample has
+        number_of_features = X.shape[1]
+        self.n_features_in_ = number_of_features
+
+        # 6. Remember the possible classes for classification
+        if self.task == "classification":
+            self.classes_ = np.unique(y)
+
+        # 7. Prepare the random number generator
+        self._rng = np.random.default_rng(self.random_state)
+
+        # 8. Build the tree, starting at depth zero
+        root_node = self._grow(X, y, depth=0)
+        self.root = root_node
+
+        # 9. Return the trained decision tree
         return self
 
     def _predict_one(self, x, node: Node):
-        raise NotImplementedError("TODO: traverse to a leaf")
+        """
+        Follow the questions until we reach a leaf:
+            x[feature] <= threshold -> go left, otherwise go right.
+        Returns the leaf's stored value.
+        """
+        while not node.is_leaf():
+            if x[node.feature] <= node.threshold:
+                node = node.left
+            else:
+                node = node.right
+        return node.value
+
+    def _check_X(self, X):
+        if self.root is None:
+            raise RuntimeError("The tree is not fitted yet. Call fit() first.")
+
+        X = np.asarray(X, dtype=float)
+        if X.ndim == 1:
+            X = X.reshape(1, -1)  # allow a single sample
+        if X.shape[1] != self.n_features_in_:
+            raise ValueError(
+                f"X has {X.shape[1]} features, but the tree was fitted on "
+                f"{self.n_features_in_}"
+            )
+        return X
 
     def predict(self, X):
-        raise NotImplementedError("TODO: predict")
+        X = self._check_X(X)
+        leaf_values = [self._predict_one(x, self.root) for x in X]
+
+        if self.task == "classification":
+            # Each leaf value is a probability vector; pick the most likely class.
+            probabilities = np.vstack(leaf_values)
+            return self.classes_[np.argmax(probabilities, axis=1)]
+
+        return np.array(leaf_values, dtype=float)
 
     def predict_proba(self, X):
-        """Classification only: return class probabilities from leaf counts."""
-        raise NotImplementedError("TODO: predict_proba (classification)")
+        #in other words a test sample come to that leaf, in that leaf the probabolity of target target variables given, and we are choosing the highest probability classficiation target, since it has higher probability
 
+        """Classification only: return class probabilities from leaf counts."""
+        if self.task != "classification":
+            raise AttributeError("predict_proba is only available for classification")
+        X = self._check_X(X)
+        # Shape (n_samples, n_classes); columns follow the order of self.classes_.
+        return np.vstack([self._predict_one(x, self.root) for x in X])
 
 
 
