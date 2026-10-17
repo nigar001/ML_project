@@ -88,4 +88,5 @@ Other commands:
 python -m src.benchmark              # only the comparison with scikit-learn
 python -m src.run_all --synthetic    # made-up listings, no dataset needed: checks the machinery
 python -m pytest tests/ -q           # the tests
+streamlit run ui/app.py              # optional demo app (after run_all)
 ```
