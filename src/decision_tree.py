@@ -78,6 +78,7 @@ class DecisionTree:
         self.root = None
         self.classes_ = None
         self.n_features_in_ = None
+        self.feature_importances_ = None   # set by fit(): share of total impurity decrease
         self._rng = np.random.default_rng(random_state)
 
     def _impurity(self, y) -> float:
@@ -91,9 +92,9 @@ class DecisionTree:
         # So high impurity means the node data is less pure
 
 
-        #From information theory
-        # we can also calculate how unexpected will be the target with probability p in the dataset(node)
-        #for that we calculate I(x_target) = -log_2base(P_x_target), so if the data contains 95 percent of true and 5 percent of false, if randomly chosen element was false we will be surprised more so I(False) will be more since it has lower probability, in other words lower chance of beging selected
+        # From information theory
+        # We can also calculate how unexpected will be the target with probability p in the dataset(node)
+        # For that we calculate I(x_target) = -log_2base(P_x_target), so if the data contains 95 percent of true and 5 percent of false, if randomly chosen element was false we will be surprised more so I(False) will be more since it has lower probability, in other words lower chance of beging selected
 
 
         if len(y) == 0:
@@ -208,48 +209,92 @@ class DecisionTree:
         return parent_impurity - children_impurity
 
 
-    def _best_split(self, X, y):
-        # We are basically trying all features and its candidate thresholds
+    def _impurity_of_counts(self, counts, sizes):
+        """Gini / entropy of many nodes at once. counts: (m, k) class counts, sizes: (m,)."""
+        p = counts / sizes[:, None]
+        if self.criterion == "gini":
+            return 1.0 - np.sum(p ** 2, axis=1)
+        # entropy: treat 0 * log(0) as 0
+        safe = np.where(p > 0, p, 1.0)
+        return -np.sum(p * np.log2(safe), axis=1)
 
+    def _best_split(self, X, y):
+        """
+        Find the (feature, threshold, impurity decrease) with the largest gain, or None.
+
+        Same objective as _candidate_thresholds + _impurity_decrease (kept above as the
+        simple reference version), but instead of re-scanning the node for every threshold
+        (O(n^2) per feature) we sort each feature once and get the left/right statistics
+        of EVERY threshold from cumulative sums (O(n log n) per feature):
+            classification: cumulative class counts -> Gini / entropy of both children
+            regression:     cumulative sum(y) and sum(y^2) -> variance of both children
+        """
         n_samples, n_features = X.shape
 
         if n_samples < 2:
             return None
-        # Of course we should check the parent data impurity to compare which feature and which throshold makes it better(with less impurity)
 
         parent_impurity = self._impurity(y)
+
+        if self.task == "classification":
+            # One-hot class indicators; cumulative sums over the sorted rows = class counts.
+            _, class_index = np.unique(y, return_inverse=True)
+            onehot = np.eye(class_index.max() + 1)[class_index]
+            total_counts = onehot.sum(axis=0)
+        else:
+            # Variance does not change if y is shifted; centering keeps the sums accurate.
+            y_centered = np.asarray(y, dtype=float) - np.mean(y)
+            total_sum = y_centered.sum()
+            total_sq = np.sum(y_centered ** 2)
+
+        # Size of the left child for the split placed after sorted row i (i = 0 .. n-2).
+        n_left = np.arange(1, n_samples, dtype=float)
+        n_right = n_samples - n_left
+        big_enough = (n_left >= self.min_samples_leaf) & (n_right >= self.min_samples_leaf)
 
         best_split = None
         best_decrease = -np.inf
 
-        # Examine every feature.
+        # Random feature order: it only decides ties between equally good splits.
         for feature in self._rng.permutation(n_features):
-
-            # Select one feature column.
             column = X[:, feature]
+            order = np.argsort(column, kind="stable")
+            sorted_values = column[order]
 
-            # Generate possible thresholds for this feature.
-            for threshold in self._candidate_thresholds(column):
+            # A threshold can only sit between two DIFFERENT neighbouring values.
+            valid = (sorted_values[:-1] < sorted_values[1:]) & big_enough
+            if not valid.any():
+                continue
 
-                decrease = self._impurity_decrease(
-                    column,
-                    y,
-                    threshold,
-                    parent_impurity,
-                )
+            if self.task == "classification":
+                left_counts = np.cumsum(onehot[order], axis=0)[:-1]
+                right_counts = total_counts - left_counts
+                children_impurity = (
+                    n_left * self._impurity_of_counts(left_counts, n_left)
+                    + n_right * self._impurity_of_counts(right_counts, n_right)
+                ) / n_samples
+            else:
+                ys = y_centered[order]
+                left_sum = np.cumsum(ys)[:-1]
+                left_sq = np.cumsum(ys ** 2)[:-1]
+                # n * variance = sum(y^2) - sum(y)^2 / n, for each child
+                left_ss = left_sq - left_sum ** 2 / n_left
+                right_ss = (total_sq - left_sq) - (total_sum - left_sum) ** 2 / n_right
+                children_impurity = (left_ss + right_ss) / n_samples
 
-                if (
-                    decrease is not None
-                    and decrease > best_decrease
-                ):
+            decrease = np.where(valid, parent_impurity - children_impurity, -np.inf)
+            i = int(np.argmax(decrease))           # first best threshold on this feature
 
-                    best_decrease = decrease
+            if decrease[i] > best_decrease:
+                low, high = sorted_values[i], sorted_values[i + 1]
+                threshold = (low + high) / 2.0
+                if threshold >= high:
+                    # Float rounding: the midpoint of two neighbouring floats can equal the
+                    # upper one, which would send both values left. Use the lower value.
+                    threshold = low
+                best_decrease = float(decrease[i])
+                best_split = (int(feature), float(threshold), best_decrease)
 
-                    best_split = (
-                        int(feature),
-                        float(threshold),
-                        float(decrease),
-                    )
         return best_split
 
     def _leaf_value(self, y):
@@ -318,8 +363,14 @@ class DecisionTree:
         feature, threshold, decrease = split
 
         # The best split doesn't improve purity enough to be worth it -> leaf.
-        if decrease < self.min_impurity_decrease:
+        # Like scikit-learn, the decrease is weighted by this node's share of ALL training
+        # rows, so one threshold means the same thing at the top and at the bottom of the tree.
+        weighted_decrease = decrease * n_samples / self._n_train
+        if weighted_decrease < self.min_impurity_decrease:
             return self._make_leaf(y)
+
+        # Bookkeeping for feature_importances_ (total impurity decrease per feature).
+        self._importance_sums[feature] += weighted_decrease
 
         # --- Split and recurse ---
         goes_left = X[:, feature] <= threshold
@@ -364,8 +415,17 @@ class DecisionTree:
         self._rng = np.random.default_rng(self.random_state)
 
         # 8. Build the tree, starting at depth zero
+        self._n_train = len(y)
+        self._importance_sums = np.zeros(number_of_features)
         root_node = self._grow(X, y, depth=0)
         self.root = root_node
+
+        # Impurity-decrease feature importance: each feature's share of the total decrease
+        # (sums to 1; all zeros if the tree never split).
+        total = self._importance_sums.sum()
+        self.feature_importances_ = (
+            self._importance_sums / total if total > 0 else self._importance_sums.copy()
+        )
 
         # 9. Return the trained decision tree
         return self
@@ -417,6 +477,3 @@ class DecisionTree:
         X = self._check_X(X)
         # Shape (n_samples, n_classes); columns follow the order of self.classes_.
         return np.vstack([self._predict_one(x, self.root) for x in X])
-
-
-
