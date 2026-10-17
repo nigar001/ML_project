@@ -77,8 +77,8 @@
     \vspace{1.2em}
     % Authors: Surname, Given name --- alphabetical by surname.
     {\large
-      Alimammadova, Nigar\quad Dilavarli, Farid\quad Karimova, Ulkar\quad
-      Gojayev Nihad\par}
+      Alimammadova, Nigar\quad Dilavarli, Farid\quad Gojayev, Nihad\quad
+      Karimova, Ulkar\par}
     \vspace{0.5em}
     {\itshape MLE-AI-201 Machine Learning, AI Academy --- Cohort II\par}
     \vspace{1.4em}
@@ -95,9 +95,13 @@
     compared with scikit-learn under matched settings, the same splits and
     the same seeds. The cleaning removes two target-leakage columns and a
     less obvious leak: 36\% of the raw rows are repeat scrapes of a
-    listing that is already in the file. \todo{Headline numbers of our
-    tree and our SVM against scikit-learn, and the main takeaway, once
-    both models are final.} An error analysis shows where the models fail:
+    listing that is already in the file. Our tree reproduces
+    scikit-learn's to the third decimal (test $R^2$ 0.781 on the log
+    price, F1 0.912 for the tier) and gives the same tier call on 99.9\%
+    of held-out listings; our SVM reaches F1 0.850 against 0.852 for
+    \texttt{SGDClassifier}, with 95.7\% identical calls. The tree beats
+    the linear SVM by six F1 points, because price depends on area and
+    location jointly. An error analysis shows where the models fail:
     the most expensive 1\% of listings, land plots, commercial property
     and districts with few training listings. One command reproduces every
     number, table and figure:
@@ -199,8 +203,12 @@ measure memory. We keep one row per listing URL, the most recent scrape.
         is converted (1~sot = 100~m$^2$).
   \item \textit{Outliers.} We keep prices from 1{,}000 to 10~million AZN
         and areas from 15 to 3{,}000~m$^2$ (land up to 50{,}000~m$^2$).
-        \todo{Ulkar: one sentence on why these limits, and how many
-        listings each rule removes.}
+        These limits remove 206 of the 64{,}454 distinct listings: 8
+        priced below 1{,}000~AZN (values such as 11 or 250~AZN cannot be
+        the sale price of a property), 63 above 10~million AZN, 36 under
+        15~m$^2$, too small for a dwelling, and 99 above the area cap.
+        Land gets a higher cap because plots of several hectares are
+        genuine listings.
   \item \textit{Missing values.} Rows without a price or an area are
         dropped. Other missing numbers are set to 0 and missing categories
         to ``Unknown''. These are constants, so no statistic of the data,
@@ -250,11 +258,22 @@ below \texttt{min\_impurity\_decrease}. A leaf predicts the majority class
 importance of a feature is the total impurity decrease of the splits that
 use it, weighted by the share of training points reaching them and
 normalised to sum to one.
-\todo{Member 2: confirm that this paragraph matches the final code, and
-add the implementation details that matter for the comparison --- how the
-split search is vectorised, how ties between equally good splits
-are broken, and the unit test that matches scikit-learn on a small
-fully-determined example.}
+
+The split search sorts each feature once per node and obtains the impurity
+of every candidate threshold from cumulative class counts (classification)
+or cumulative sums of $y$ and $y^2$ (regression), so a node costs
+$O(n\log n)$ per feature instead of $O(n^2)$; a test checks this fast
+search against a plain reference that scans every threshold. Features are
+visited in a seeded random order and the first best threshold is kept, so
+ties between equally good splits are broken reproducibly, though not in
+scikit-learn's order. A midpoint that rounds onto the upper of two
+neighbouring values falls back to the lower one, so no child is ever
+empty, and, as in scikit-learn, \texttt{min\_impurity\_decrease} is
+compared with the decrease weighted by the node's share of all training
+rows. Unit tests check the impurities against hand calculations, that the
+tree finds the same splits as scikit-learn on a small fully-determined
+example, that each of the four stopping settings changes the tree, and that
+\texttt{predict\_proba} returns leaf frequencies.
 
 \subsection{Support-vector machine (from scratch)}
 With labels $y_i\in\{-1,+1\}$ the linear soft-margin SVM minimises
@@ -273,8 +292,20 @@ The margin width is $2/\lVert\mathbf{w}\rVert$, and the support vectors
 are the training points with $y_i(\mathbf{w}^{\top}\mathbf{x}_i+b)\le 1$.
 The hinge loss is sensitive to scale, so features are standardised with
 the mean and standard deviation of the training rows only.
-\todo{Member 3: confirm that this matches the final code; how the bias is handled, the number of steps or epochs,
-and the plot of $J$ decreasing.}
+Our implementation folds the bias into $\mathbf{w}$ by appending a
+constant feature (so $b$ is regularised too), averages the sub-gradient
+over mini-batches of 32 examples drawn with replacement, projects
+$\mathbf{w}$ onto the ball $\lVert\mathbf{w}\rVert\le 1/\sqrt{\lambda}$
+after each step as in~\cite{pegasos}, and trains for 20 passes over the
+training rows. The objective is recorded every 200 steps;
+Fig.~\ref{fig:objective} shows it falling and flattening.
+
+\begin{figure}[t]
+  \centering
+  \genfigure[0.92\linewidth]{objective_ours_svm_pegasos}
+  \caption{Training objective $J$ of our SVM (Task B, final fit).}
+  \label{fig:objective}
+\end{figure}
 
 For the non-linear extension we use random Fourier features~\cite{rff},
 $z(\mathbf{x})=\sqrt{2/D}\,\cos(\mathbf{W}\mathbf{x}+\mathbf{u})$ with
@@ -282,7 +313,14 @@ Gaussian $\mathbf{W}$ and uniform $\mathbf{u}$, and run the same linear
 solver on $z(\mathbf{x})$. Unlike kernelised Pegasos this keeps one weight
 vector instead of one coefficient per training point, which matters with
 tens of thousands of listings.
-\todo{Member 3: the values of $D$ and of the bandwidth, and the result.}
+Member~3's study (\texttt{svm\_experiments.py}, run by the same command)
+uses $D=500$ and sweeps the bandwidth $\gamma$ together with $\lambda$ on
+the validation split. The best random-feature model reached a validation
+F1 of 0.809, against 0.825 for the linear SVM in the same study, so the
+extension did not pay off on these features and the linear SVM remains our
+main model. That study works on a reduced feature set of 54 columns and its
+own split, so its numbers are not comparable digit by digit with the
+tables below.
 
 \section{Experimental Setup}
 \textit{Metrics.} Task~A is scored by RMSE, MAE and $R^2$ on the log
@@ -301,10 +339,29 @@ $\alpha=\lambda$, which minimises the same objective~(\ref{eq:svm}) with
 the same kind of solver; its features are standardised inside a
 scikit-learn \texttt{Pipeline}. Table~\ref{tab:settings} lists the
 settings, which come from \SettingsSource.
-\todo{Members 2 and 3: the tuning study --- Gini against entropy, the
-depth sweep and one more tree setting, the $\lambda$ sweep, with
-validation curves, and the final values chosen from validation evidence
-only.}
+\textit{Tuning} (\texttt{src/tuning.py}) uses the training
+and validation parts only. For the SVM we sweep
+$\lambda\in\{10^{-5},\dots,10^{-1}\}$ with 20 passes each; validation F1
+peaks at $\lambda=10^{-3}$ (0.840). For the tree, on a seeded sample of
+20{,}000 training rows, we sweep \texttt{max\_depth} from 2 to 15 for Gini
+and entropy (Task~B) and for variance (Task~A), then
+\texttt{min\_samples\_leaf} $\in\{1,5,20,50\}$ at the chosen depth. Gini
+and entropy stay within 0.01 F1 of each other at every depth; Gini peaks
+slightly higher and is kept. One set of stopping settings serves both
+tasks, so the depth is chosen on Task~A, the tree's main task. The
+resulting curves are in Fig.~\ref{fig:tuning}.
+
+\begin{figure*}[t]
+  \centering
+  \genfigure[0.32\textwidth]{tuning_tree_depth_task_a}\hfill
+  \genfigure[0.32\textwidth]{tuning_tree_depth_task_b}\hfill
+  \genfigure[0.32\textwidth]{tuning_svm_lambda_f1}
+  \caption{Validation curves on the validation split. Left: our tree,
+  Task A, $R^2$ against depth. Middle: our tree, Task B, F1 against depth
+  for Gini and entropy (the dashed line marks Task B's own best depth).
+  Right: our SVM, F1 against $\lambda$.}
+  \label{fig:tuning}
+\end{figure*}
 
 \begin{table}[t]
   \centering
@@ -329,8 +386,12 @@ wall-clock seconds on one laptop (Intel Core i7-13650HX).
 Tables~\ref{tab:resultsA} and~\ref{tab:resultsB} give the test-split
 metrics of every model, with the cross-validated mean and standard
 deviation of the main metric.
-\todo{Two or three sentences comparing our tree and our SVM with their
-baselines, once the models are final.}
+Our tree reproduces scikit-learn's to the third decimal on both
+tasks: test $R^2$ 0.781 against 0.782 on the log price, and F1 0.912 with
+AUC 0.969 for both on the tier. Our SVM is within 0.003 F1 of
+\texttt{SGDClassifier}. The tree is the stronger model for the tier
+(F1 0.912 against 0.850), and its cross-validated scores vary by less
+than 0.01 across folds.
 
 \begin{table*}[t]
   \centering
@@ -369,8 +430,16 @@ features in a seeded random order), and because scikit-learn stores
 features as 32-bit floats, which moves thresholds in the last digits. Two
 SVMs trained by stochastic steps stop near the optimum of~(\ref{eq:svm}),
 not at it, so we compare the objective value they reach.
-\todo{Read the gaps off Table~\ref{tab:agreement} and explain them, once
-our models are final.}
+The trees grow to the same depth with almost the same
+number of leaves and share the root split: area $\le 100.25$~m$^2$ for
+the price and $\le 92.15$~m$^2$ for the tier, which scikit-learn stores as
+92.1500015 because of its 32-bit floats. They give the same tier on
+99.87\% of held-out listings, and their price predictions differ by 0.005
+on the log scale on average; the few larger gaps come from the handful of
+nodes where a tie or a rounded threshold sends a listing to a different
+leaf. The SVMs agree on 95.7\% of listings. Ours reaches $J=0.392$
+against 0.387: \texttt{SGDClassifier} runs until its own convergence test,
+while ours stops after a fixed 20 passes, slightly short of the optimum.
 
 \begin{table*}[t]
   \centering
@@ -397,8 +466,9 @@ Fig.~\ref{fig:importance} shows the impurity-decrease importances of the
 tree for Task~A, and Fig.~\ref{fig:weights} the largest weights of the
 linear SVM on standardised features. The tree relies mostly on the area
 and then on the coordinates; the one-hot district columns add little once
-latitude and longitude are available. % CHECK against the final figure. The SVM cannot split on
-coordinates, so it puts weight on individual districts instead.
+latitude and longitude are available. The SVM cannot split on
+coordinates, so besides rooms, area and category it puts weight on
+individual districts instead.
 
 \begin{figure}[t]
   \centering
@@ -419,7 +489,11 @@ coordinates, so it puts weight on individual districts instead.
 Table~\ref{tab:timing} gives fit and predict times at three training
 sizes. scikit-learn's tree is compiled code, while ours is NumPy driven
 from Python, so a large constant-factor gap is expected.
-\todo{One sentence on how our fit time grows with the number of rows.}
+Our tree fits about ten times more slowly than
+scikit-learn's (2.3~s against 0.21~s on 20{,}000 rows for Task~B), but
+its time grows almost linearly with the number of rows (0.11, 0.51 and
+2.3~s for 1{,}000, 5{,}000 and 20{,}000 rows), as expected from sorting
+each feature once per node. Our SVM fits 20{,}000 rows in 0.9~s.
 
 \begin{table*}[t]
   \centering
@@ -435,7 +509,6 @@ price band, property category and the number of training listings in the
 listing's district; the band edges and the district counts come from the
 training rows only.
 
-% CHECK these statements against the tables after the final run.
 \textit{The luxury tail.} The error on the most expensive 1\% of listings
 is several times the error in the middle of the market. A tree of limited
 depth has a limited number of leaves, so rare expensive listings share a
@@ -478,9 +551,17 @@ the most expensive listings are classified far more reliably.
 \end{table}
 
 \subsection{Bias and variance}
-\todo{Members 2 and 3: what the validation curves show --- where the tree
-moves from under- to over-fitting as depth grows, and how the margin and
-the validation score move with $\lambda$.}
+Fig.~\ref{fig:tuning} shows the usual pattern. Shallow
+trees (depth 2--4) score low on both training and validation data: high
+bias. As depth grows the training score keeps rising while the validation
+score flattens after depth 10, and the widening gap is the tree starting
+to memorise its training rows: variance. Raising \texttt{min\_samples\_leaf}
+from 1 to 20 lowers the training $R^2$ from 0.95 to 0.80 but keeps the
+validation $R^2$ at its best, so larger leaves remove variance at no cost;
+at 50 both fall. For the SVM a very small $\lambda$ gives a narrow margin
+and a lower validation F1 (0.785 at $10^{-5}$), and a very large one a
+wide margin that underfits (0.799 at $10^{-1}$). Note that these sweeps use
+a 20{,}000-row sample, so their absolute scores sit below the final ones.
 
 \subsection{Limitations}
 \begin{itemize}
@@ -505,10 +586,17 @@ the validation score move with $\lambda$.}
 \end{itemize}
 
 \section{Conclusion}
-\todo{One short paragraph once the models are final: what the from-scratch
-models achieved against scikit-learn, the main lesson of the error
-analysis, and what we would do next (a model per property type, log area,
-an ensemble of our own trees).}
+Both models, written from scratch in NumPy, match
+scikit-learn on a real, messy dataset: our tree to the third decimal, our
+Pegasos SVM within 0.003 F1, with the gaps explained by tie-breaking,
+float precision and the optimiser's stopping rule. A depth-15 tree
+predicts Baku asking prices to within about 14\% for ordinary flats and
+classifies the price tier with F1 0.91, while a linear SVM is limited by
+the joint effect of area and location. Both fail on what is rare: the
+luxury tail, land, commercial property and thinly covered districts. Next
+we would train a model per property type, use the logarithm of the area
+with proper missing-value indicators, and build a random forest from our
+own trees.
 
 \section*{Tools and Acknowledgements}
 \textit{AI assistance.} Claude Code (Anthropic) was used by F.~Dilavarli
