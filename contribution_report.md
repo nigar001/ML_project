@@ -32,4 +32,5 @@ imbalance and why.
 | ------ | --------- |
 | Ulkar  | 25%       |
 | Nigar  | 25%       |
-| ---    | ---       |
+| Farid  | 25%       |
+| Nihad  | 25%       |
