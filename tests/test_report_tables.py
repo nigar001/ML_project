@@ -33,3 +33,11 @@ def test_tabular_layout():
 def test_categories_have_english_names():
     assert report_tables.CATEGORY_NAMES["Torpaq"] == "Land"
     assert len(set(report_tables.CATEGORY_NAMES.values())) == 7
+
+
+def test_root_split_is_the_same_up_to_float32_rounding():
+    tree = {"Depth": 15, "Leaves": 664, "Root feature": "area", "Root threshold": 92.15}
+    library = dict(tree, Leaves=665, **{"Root threshold": 92.1500015258789})
+    results = {"cv": {"agreement": {"Ours: tree vs sklearn: DecisionTreeClassifier (task_b)": {
+        "Same prediction %": 99.9, "Ours: tree": tree, "sklearn: DecisionTreeClassifier": library}}}}
+    assert "same root split" in report_tables.agreement(results)
