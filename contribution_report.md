@@ -6,12 +6,12 @@ plus a short per-member paragraph.
 
 ## Team
 
-| Member (Surname, Name) | GitHub handle | Main responsibilities                                                                          |
-| ---------------------- | ------------- | ---------------------------------------------------------------------------------------------- |
-| Karimova Ulkar         | @iamulkeer    | Data pipeline design, cleaning, leakage removal, feature engineering & EDA                     |
-| Dilavarli Farid        | @faridqul     | Evaluation metrics, benchmark, one-command pipeline (tuning, error analysis), report, slides   |
-| Alimammadova Nigar     | @nigar001     | Pegasos SVM (hinge-loss, random Fourier features), SVM experiments and tests, repository setup |
-| ---                    | ---           | ---                                                                                            |
+| Member (Surname, Name) | GitHub handle   | Main responsibilities                                                                                                                                                  |
+| ---------------------- |-----------------| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Karimova Ulkar         | @iamulkeer      | Data pipeline design, cleaning, leakage removal, feature engineering & EDA                                                                                             |
+| Dilavarli Farid        | @faridqul       | Evaluation metrics, benchmark, one-command pipeline (tuning, error analysis), report, slides                                                                           |
+| Alimammadova Nigar     | @nigar001       | Pegasos SVM (hinge-loss, random Fourier features), SVM experiments and tests, repository setup                                                                         |
+| Gojayev Nihad          | @justpr09rammer | Decision tree from scratch (Gini/entropy/variance, stopping rules, feature importances), split-search speed-up, tree tests, tree comparison with scikit-learn, tree report sections |
 
 ## Per-member summary
 
@@ -21,7 +21,7 @@ plus a short per-member paragraph.
 
 **Alimammadova Nigar —** Implemented the linear soft-margin SVM in `src/svm.py`: Pegasos mini-batch sub-gradient descent on the hinge-loss primal (batch size 32, η = 1/(λt), bias folded into the weights, optional projection), which records the objective history, the margin width 2/‖w‖ and the support vectors, plus random Fourier features as the non-linear extension. Wrote `src/svm_experiments.py` (λ sweep, learning-rate schedules, epochs and batch size, margin and support-vector analysis, random-Fourier-feature sweep, 5-fold cross-validation against scikit-learn's SGDClassifier and LinearSVC, error analysis by distance from the tier threshold) and `tests/test_svm.py` (12 tests, e.g. objective decreases, larger λ gives a wider margin, final objective close to LinearSVC, RFF approximates the RBF kernel). Chose λ = 0.001 on the validation split, ran the experiments on the real data, and set up and pushed to the shared repository. Used Claude as an AI assistant for this work, to draft the code, experiments and tests and to explain the method.
 
-**Surname, Name —** ...
+**Gojayev Nihad —** Implemented the decision tree from scratch in `src/decision_tree.py`: Gini, entropy and variance (MSE) impurity, a greedy threshold search over the midpoints of sorted feature values, recursive growth with four stopping rules (`max_depth`, `min_samples_split`, `min_samples_leaf`, `min_impurity_decrease`), majority-class and mean-target leaves, and `predict` / `predict_proba`. Reviewed it against hand calculations and scikit-learn and found the split search too slow for the real data (quadratic in the node size). Replaced it with a sort-and-cumulative-sum search that returns the same impurity decrease (checked against the simple version on randomised nodes) and is about 200x faster on 20,000 synthetic rows. Also guarded a float-rounding edge case in the thresholds, weighted `min_impurity_decrease` by node size as scikit-learn does, and added `feature_importances_`, which was missing, so the importance figure was skipped. Wrote `tests/test_decision_tree.py` (19 tests, e.g. our root split, threshold and predictions equal scikit-learn's on a fully-determined example, every stopping rule changes the tree, importances equal scikit-learn's on shallow trees) and `src/tree_comparison.py` (our tree against `DecisionTreeClassifier` and `DecisionTreeRegressor` on the project split, with settings chosen on validation only: RMSE/MAE/R² in AZN, confusion matrices, fit time). On the real data the tree matches scikit-learn on the test split (Task B F1 0.9117 vs 0.9118, Task A R² on log price 0.7813 vs 0.7815) and is about 11 to 16 times slower, because it is NumPy code against compiled code. Wrote the decision-tree sections of the report (method, tuning, agreement with scikit-learn, speed, bias and variance). Did not change any SVM code. Used Claude (Anthropic) as an AI assistant to review the tree, to write the faster split search, the tests and the comparison script, and to draft the report text; I ran the code and checked the outputs.
 
 ## Rough effort split
 
