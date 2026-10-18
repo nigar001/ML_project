@@ -8,7 +8,10 @@ Kaggle: **"binaaz-sale-project"** by `sehriyarmemmedli`
 <https://www.kaggle.com/datasets/sehriyarmemmedli/binaaz-sale-project>
 
 ## How to place it
-1. Download the dataset archive from Kaggle.
+1. Download the dataset archive from Kaggle. It contains one file,
+   `house_sale.csv` (dated 2025-02-03, 100,775 rows × 51 columns; the version
+   used for every reported number, downloaded 2026-10-12). **Rename it to
+   `bina_az_sale.csv`**, the name `src/data_prep.py` expects.
 2. Extract it so the CSV lives **directly in this folder**, e.g.:
    ```
    data/bina_az_sale.csv

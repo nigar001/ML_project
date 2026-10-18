@@ -26,7 +26,6 @@ scikit-learn's SVC is a BASELINE only — not allowed inside this class.
 Remember to STANDARDIZE features (see data_prep.standardize) before training.
 """
 
-
 from __future__ import annotations
  
 import numpy as np

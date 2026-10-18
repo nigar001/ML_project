@@ -187,7 +187,9 @@ def agreement(results: dict) -> str:
         if "Depth" in ours:
             describe = lambda d: f"depth {d['Depth']}, {num(d['Leaves'])} leaves"
             same_root = (ours["Root feature"] == theirs["Root feature"]
-                         and abs(ours["Root threshold"] - theirs["Root threshold"]) < 1e-6)
+                         # scikit-learn keeps thresholds as 32-bit floats: compare to that precision
+                         and abs(ours["Root threshold"] - theirs["Root threshold"])
+                         <= 1e-5 * max(1.0, abs(theirs["Root threshold"])))
             check = "same root split" if same_root else "different root split"
         else:
             describe = lambda d: f"$J$ = {d['Objective J']:.4f}, $\\lVert\\mathbf{{w}}\\rVert$ = {d['||w||']:.3f}"
