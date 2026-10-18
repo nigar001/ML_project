@@ -313,7 +313,7 @@ Gaussian $\mathbf{W}$ and uniform $\mathbf{u}$, and run the same linear
 solver on $z(\mathbf{x})$. Unlike kernelised Pegasos this keeps one weight
 vector instead of one coefficient per training point, which matters with
 tens of thousands of listings.
-Member~3's study (\texttt{svm\_experiments.py}, run by the same command)
+The wider SVM study (\texttt{svm\_experiments.py}, run by the same command)
 uses $D=500$ and sweeps the bandwidth $\gamma$ together with $\lambda$ on
 the validation split. The best random-feature model reached a validation
 F1 of 0.809, against 0.825 for the linear SVM in the same study, so the
@@ -613,8 +613,9 @@ experiments and tests and to explain the method.
 N.~Gojayev used Claude (Anthropic) to review the tree, to write the faster
 split search, the tests and the comparison script, and to draft report
 text; he ran the code and checked the outputs.
-\todo{U.~Karimova: state your own AI-assistant use, or that there was
-none.}
+U.~Karimova used Claude (Anthropic) as an AI assistant to build the demo
+user interface (\texttt{ui/app.py}); she ran it and checked its output on
+the real data.
 
 \textit{Data and software.} The dataset is the Bina.az Sale Project
 scrape published on Kaggle~\cite{dataset}. We used NumPy, pandas and
