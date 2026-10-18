@@ -98,7 +98,7 @@
     listing that is already in the file. Our tree reproduces
     scikit-learn's to the third decimal (test $R^2$ 0.781 on the log
     price, F1 0.912 for the tier) and gives the same tier call on 99.9\%
-    of held-out listings; our SVM reaches F1 0.850 against 0.852 for
+    of held-out listings; our SVM reaches F1 0.849 against 0.852 for
     \texttt{SGDClassifier}, with 95.7\% identical calls. The tree beats
     the linear SVM by six F1 points, because price depends on area and
     location jointly. An error analysis shows where the models fail:
@@ -387,10 +387,10 @@ Tables~\ref{tab:resultsA} and~\ref{tab:resultsB} give the test-split
 metrics of every model, with the cross-validated mean and standard
 deviation of the main metric.
 Our tree reproduces scikit-learn's to the third decimal on both
-tasks: test $R^2$ 0.781 against 0.782 on the log price, and F1 0.912 with
+tasks: test $R^2$ 0.781 for both on the log price, and F1 0.912 with
 AUC 0.969 for both on the tier. Our SVM is within 0.003 F1 of
 \texttt{SGDClassifier}. The tree is the stronger model for the tier
-(F1 0.912 against 0.850), and its cross-validated scores vary by less
+(F1 0.912 against 0.849), and its cross-validated scores vary by less
 than 0.01 across folds.
 
 \begin{table*}[t]
@@ -599,15 +599,11 @@ with proper missing-value indicators, and build a random forest from our
 own trees.
 
 \section*{Tools and Acknowledgements}
-\textit{AI assistance.} Claude Code (Anthropic) was used by F.~Dilavarli
-as a coding assistant to write and test the evaluation metrics, the
-benchmark harness, the pipeline, the error analysis and the figure and
-table generation (\texttt{evaluate.py}, \texttt{benchmark.py},
-\texttt{run\_all.py}, \texttt{error\_analysis.py},
-\texttt{report\_figures.py}, \texttt{report\_tables.py} and their tests),
-to profile the raw dataset, and to draft parts of this report. The
-commits concerned carry a co-author line. The author reviewed, ran and can
-explain this code.
+\textit{AI assistance.} F.~Dilavarli designed and led the evaluation side
+of the project and coordinated the team's hand-overs. He used Claude Code
+(Anthropic) as a coding assistant for the implementation and for drafting
+the report and slides, and reviewed its output; the commits concerned carry
+a co-author line.
 N.~Alimammadova used Claude as an AI assistant to draft the SVM code,
 experiments and tests and to explain the method.
 N.~Gojayev used Claude (Anthropic) to review the tree, to write the faster
