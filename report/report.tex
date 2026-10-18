@@ -599,15 +599,16 @@ with proper missing-value indicators, and build a random forest from our
 own trees.
 
 \section*{Tools and Acknowledgements}
-\textit{AI assistance.} Claude Code (Anthropic) was used by F.~Dilavarli
-as a coding assistant to write and test the evaluation metrics, the
-benchmark harness, the pipeline, the error analysis and the figure and
-table generation (\texttt{evaluate.py}, \texttt{benchmark.py},
-\texttt{run\_all.py}, \texttt{error\_analysis.py},
-\texttt{report\_figures.py}, \texttt{report\_tables.py} and their tests),
-to profile the raw dataset, and to draft parts of this report. The
-commits concerned carry a co-author line. The author reviewed, ran and can
-explain this code.
+\textit{AI assistance.} F.~Dilavarli planned the evaluation side of the
+project (metrics, benchmark, pipeline, tuning and error analysis), decided
+how each part would be tested and coordinated the hand-overs between team
+members, including the list of data problems that led to the fixed data
+stage. He used Claude Code (Anthropic) to write the code and tests for these
+parts (\texttt{evaluate.py}, \texttt{benchmark.py}, \texttt{run\_all.py},
+\texttt{tuning.py}, \texttt{error\_analysis.py}, \texttt{report\_figures.py},
+\texttt{report\_tables.py}, \texttt{model\_api.py}), to profile the raw
+dataset and to draft this report and the slides. He checked the results at
+each step before they were committed; those commits carry a co-author line.
 N.~Alimammadova used Claude as an AI assistant to draft the SVM code,
 experiments and tests and to explain the method.
 N.~Gojayev used Claude (Anthropic) to review the tree, to write the faster
