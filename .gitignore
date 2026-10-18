@@ -15,6 +15,7 @@ env/
 report/figures/*.pdf
 report/figures/*.png
 report/tables/
+report/svm_results.json
 !report/figures/.gitkeep
 *.log
 *.aux

@@ -72,13 +72,30 @@ def top_bars_plot(names, values, title: str, xlabel: str, path: str, top: int = 
     return _save(fig, path)
 
 
-def objective_plot(history, title: str, path: str) -> str:
+def objective_plot(steps, values, title: str, path: str) -> str:
     """The SVM training objective J against the training step: it should go down and flatten."""
-    history = np.asarray(history, dtype=float)
-    fig, ax = _axes(title, "Recorded step", "Objective J(w, b)")
-    ax.plot(np.arange(1, len(history) + 1), history, color=COLORS[0], linewidth=2, marker="o",
-            markersize=3)
+    fig, ax = _axes(title, "Training step", "Objective J(w, b)")
+    ax.plot(np.asarray(steps, float), np.asarray(values, float), color=COLORS[0], linewidth=2,
+            marker="o", markersize=3)
     ax.xaxis.get_major_locator().set_params(integer=True)
+    return _save(fig, path)
+
+
+def sweep_plot(x, series: dict, title: str, xlabel: str, ylabel: str, path: str,
+               log_x: bool = False, mark_x=None) -> str:
+    """
+    A validation curve: one line per series (e.g. training and validation score)
+    against a setting. mark_x draws a dashed line at the chosen value.
+    """
+    fig, ax = _axes(title, xlabel, ylabel)
+    for i, (name, values) in enumerate(series.items()):
+        ax.plot(x, values, color=COLORS[i % len(COLORS)], linewidth=2, marker="o", markersize=4,
+                label=name)
+    if mark_x is not None:
+        ax.axvline(mark_x, color="grey", linestyle="--", linewidth=1, label=f"chosen: {mark_x:g}")
+    if log_x:
+        ax.set_xscale("log")
+    ax.legend(fontsize=8)
     return _save(fig, path)
 
 

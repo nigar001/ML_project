@@ -62,10 +62,12 @@ pip install -r requirements.txt
 python -m src.run_all
 ```
 
-`python -m src.run_all` (about 30 seconds) does everything: cleans the data, makes
+`python -m src.run_all` (about 5 minutes) does everything: cleans the data, makes
 one seeded stratified train / validation / test split, draws the EDA figures,
+chooses the final settings on the validation split (`src/tuning.py`),
 cross-validates our models against scikit-learn, evaluates once on the test
-split, and runs the diagnostics and the error analysis. It writes:
+split, runs the diagnostics and the error analysis, and finally the wider SVM
+studies (`src/svm_experiments.py`). It writes:
 
 - `results/results.json` — every number,
 - `results/summary.md` — the results tables,
@@ -86,4 +88,5 @@ Other commands:
 python -m src.benchmark              # only the comparison with scikit-learn
 python -m src.run_all --synthetic    # made-up listings, no dataset needed: checks the machinery
 python -m pytest tests/ -q           # the tests
+streamlit run ui/app.py              # optional demo app (after run_all)
 ```

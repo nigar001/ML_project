@@ -7,8 +7,8 @@ scikit-learn's maths, so the "our models" path of the benchmark and the
 pipeline can be built and tested before the real tree and SVM exist.
 
 Nothing produced with them may be reported as a project result. They live in
-tests/ for that reason, and `python -m src.run_all --standins` writes to its
-own folder with a banner.
+tests/ for that reason and are used only by the tests; `python -m src.run_all`
+always runs the team's own models.
 """
 
 from __future__ import annotations
@@ -42,7 +42,8 @@ class StandInTree:
 class StandInSVM:
     """Has our SVM's constructor and attributes (w, b), fitted by the library's SGD."""
 
-    def __init__(self, lambda_, random_state):
+    def __init__(self, lambda_, random_state, **training_settings):
+        # Training settings meant for our PegasosSVM (e.g. n_epochs) do not apply here.
         self.lambda_, self.random_state = lambda_, random_state
         self._model = SGDClassifier(loss="hinge", alpha=lambda_, random_state=random_state)
 

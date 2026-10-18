@@ -17,7 +17,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src import benchmark, run_all, synthetic
+from src import benchmark, model_api, run_all, synthetic
 from tests.standins import StandInSVM, StandInTree
 
 STANDINS = (StandInTree, StandInSVM)
@@ -61,8 +61,18 @@ def test_merge_config_overrides_only_what_is_given():
 
 
 # --- The pipeline with the team's templates ----------------------------------
+class _Template:
+    """Behaves like a team model whose code is still the template."""
+
+    def __init__(self, *args, **kwargs):
+        pass
+
+    def fit(self, X, y):
+        raise NotImplementedError("TODO")
+
+
 def test_pipeline_runs_while_team_models_are_templates(listings, tmp_path, capsys):
-    results = _run(listings, tmp_path)
+    results = _run(listings, tmp_path, model_classes=(_Template, _Template))
     printed = capsys.readouterr().out
 
     assert len(results["skipped"]) == 3                             # tree x2 tasks, SVM
@@ -170,3 +180,17 @@ def test_missing_optional_outputs_skip_their_figures(listings, tmp_path):
     assert "objective_ours_svm_pegasos.png" not in names
     assert "svm_weights_ours_svm_pegasos.png" in names               # w and b are still there
     assert "Ours: tree" in results["test"]["task_b"]                 # and the run completed
+
+
+def test_objective_history_accepts_values_or_step_value_pairs():
+    class WithPairs:
+        history_ = [(1, 3.0), (200, 1.5), (400, 1.2)]                # our PegasosSVM's format
+
+    class WithValues:
+        objective_history_ = [3.0, 2.0]
+
+    steps, values = model_api.objective_history(WithPairs())
+    assert steps.tolist() == [1, 200, 400] and values.tolist() == [3.0, 1.5, 1.2]
+    steps, values = model_api.objective_history(WithValues())
+    assert steps.tolist() == [1, 2] and values.tolist() == [3.0, 2.0]
+    assert model_api.objective_history(object()) is None

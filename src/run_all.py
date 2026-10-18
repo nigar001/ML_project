@@ -16,7 +16,8 @@ Stages:
      margin, support vectors,
   7. error analysis: where do the models fail?
   8. save every number (results.json, summary.md), every figure (PNG) and the
-     report's tables (LaTeX).
+     report's tables (LaTeX),
+  9. (real data only) Member 3's wider SVM studies in svm_experiments.py.
 
 Everything is seeded from data_prep.SEED. Nothing from the test split sets the
 tier threshold, the scaling statistics or any setting. A model that is not
@@ -318,9 +319,9 @@ def run_pipeline(X, y_price, feature_names, rows: pd.DataFrame | None = None,
                         "Weight (positive pushes towards premium)",
                         figure_path(f"svm_weights_{slug(name)}"))
                 history = model_api.objective_history(model)
-                if history is not None and len(history) > 1:
+                if history is not None:
                     report_figures.objective_plot(
-                        history, f"{title}: training objective", figure_path(f"objective_{slug(name)}"))
+                        *history, f"{title}: training objective", figure_path(f"objective_{slug(name)}"))
 
         if roc_curves:
             report_figures.roc_plot(roc_curves, f"{label}ROC curves, test split",
@@ -369,23 +370,14 @@ def main(argv=None) -> None:
     parser = argparse.ArgumentParser(description="Reproduce every number and figure.")
     parser.add_argument("--synthetic", action="store_true",
                         help="use seeded made-up listings instead of the real data")
-    parser.add_argument("--standins", action="store_true",
-                        help="development only: stand-in models in place of the team's")
     args = parser.parse_args(argv)
 
-    out_dir, fig_dir, table_dir, label, model_classes = OUT_DIR, FIG_DIR, TABLE_DIR, "", None
-    if args.standins:
-        from tests import standins                  # development scaffolding, never reported
-        print("STAND-IN MODELS: 'Ours' rows below are NOT the team's models. Not project results.")
-        model_classes = (standins.StandInTree, standins.StandInSVM)
-        out_dir, label = os.path.join(OUT_DIR, "standins"), "STAND-IN MODELS, NOT RESULTS. "
+    out_dir, fig_dir, table_dir, label = OUT_DIR, FIG_DIR, TABLE_DIR, ""
     if args.synthetic:
         print("SYNTHETIC DATA: checks the pipeline machinery only. Not project results.")
         X, y_price, feature_names = synthetic.make_listings()
         rows = None
-        if not args.standins:
-            out_dir = os.path.join(OUT_DIR, "synthetic")
-        label = "SYNTHETIC DATA. " + label
+        out_dir, label = os.path.join(OUT_DIR, "synthetic"), "SYNTHETIC DATA. "
     else:
         X, y_price, feature_names, table = benchmark.load_real_data(with_table=True)
         rows = pd.DataFrame({"category": table["Kateqoriya"].to_numpy(),
@@ -399,8 +391,14 @@ def main(argv=None) -> None:
         table_dir = os.path.join(out_dir, "tables")  # ... or its tables
 
     run_pipeline(X, y_price, feature_names, rows, out_dir=out_dir, fig_dir=fig_dir,
-                 model_classes=model_classes, tuning_run=load_tuning(), label=label,
-                 table_dir=table_dir)
+                 tuning_run=load_tuning(), label=label, table_dir=table_dir)
+
+    # Member 3's wider SVM studies (learning-rate schedules, epochs, batch size, random
+    # Fourier features) draw report/figures/svm_*.png. They run on her own feature set
+    # and split, so their numbers are reported as a separate study, not in the tables above.
+    if not args.synthetic and importlib.util.find_spec("src.svm_experiments"):
+        print("\n== 9. SVM studies (src/svm_experiments.py) ==")
+        importlib.import_module("src.svm_experiments").main()
 
 
 if __name__ == "__main__":
